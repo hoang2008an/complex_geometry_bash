@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+VENV_PY="${PROJECT_ROOT}/.venv/bin/python"
+
+if [[ -x "${VENV_PY}" ]]; then
+  PY_INTERPRETER="${VENV_PY}"
+else
+  PY_INTERPRETER="python3"
+fi
+
+PYTHONPATH="${PROJECT_ROOT}/src:${PYTHONPATH:-}" \
+  "${PY_INTERPRETER}" -m lib.geometry_cli "$@"

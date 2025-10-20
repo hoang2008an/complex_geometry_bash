@@ -15,6 +15,7 @@ Complex Geometry Bash contains a symbolic complex-geometry engine powered by Pyt
 - `bin/geometry run scripts/<scenario>.json` — execute custom problem setups; capture failing scripts under `scripts/`.
 - `bin/geometry poly concyclic A B C D` / `bin/geometry poly circumcenter A B C U` / `bin/geometry poly angle A B C <θ>` — inspect raw constraint polynomials.
 - `pytest` (placeholders today) — target new tests to `tests/` covering engine methods and CLI behaviors.
+- If you invoke CLI modules directly (e.g. `python -m geometry_cli`), ensure `PYTHONPATH` contains both `src/lib` and `src` so absolute imports resolve.
 
 ## Coding Style & Naming Conventions
 - Follow PEP 8 with two-space indents inside SymPy-heavy blocks only when readability demands; otherwise default to four spaces.
@@ -25,7 +26,7 @@ Complex Geometry Bash contains a symbolic complex-geometry engine powered by Pyt
 ## Testing Guidelines
 - Organize tests as `tests/test_<area>.py`; favor `pytest` parametrization to exercise multiple geometric configurations.
 - Assert that auto-learned substitutions propagate by inspecting `GeometryEngine.learned_rules()`.
-- For CLI checks, run `subprocess.run(["bin/geometry", ...], env={"PYTHONPATH": "src"})` and compare stdout against curated baselines.
+- For CLI checks, prefer `bin/geometry ...`. If you must invoke Python directly, run with `env={"PYTHONPATH": "src/lib:src"}` so absolute imports resolve.
 - Add regression JSON scripts for previously failing loci and run them inside tests to guard against symbolic regressions.
 
 ## Commit & Pull Request Guidelines
@@ -33,3 +34,8 @@ Complex Geometry Bash contains a symbolic complex-geometry engine powered by Pyt
 - Describe the "why" in the body, link related issues (`Refs #12`), and note test commands executed.
 - PRs must include a brief summary, screenshots or sample output when behavior changes, and a checklist of updated docs/tests.
 - Rebase onto the main branch before requesting review and ensure CI is green; avoid merge commits within feature branches.
+
+## Pending Tasks
+- Introduce lightweight `Line` and `Circle` geometry objects (store defining data and cached constraints).
+- Refactor predicates/constructors to accept the new objects where natural.
+- Implement symbolic similarity/equality triangle checks and expose corresponding CLI ops.

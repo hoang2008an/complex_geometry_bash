@@ -12,5 +12,5 @@ else
   PY_INTERPRETER="python3"
 fi
 
-PYTHONPATH="${PROJECT_ROOT}/src:${PYTHONPATH:-}" \
-  "${PY_INTERPRETER}" -m lib.geometry_cli "$@"
+PYTHONPATH="${PROJECT_ROOT}/src/lib:${PROJECT_ROOT}/src:${PYTHONPATH:-}" \
+  "${PY_INTERPRETER}" -m geometry_cli "$@"

@@ -12,7 +12,7 @@ Example script (abbreviated):
     {"op": "add_collinear", "args": ["O", "A", "P"]},
     {"op": "orthocenter", "args": ["A", "B", "C", "H"]},
     {"op": "print_points", "names": ["A", "B", "C", "H"]},
-    {"op": "perp_check", "args": ["A", "Q", "P", "H"]}
+    {"op": "constraint_check", "constraint": "perpendicular", "args": ["A", "Q", "P", "H"]}
   ]
 }
 """
@@ -22,11 +22,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 import sympy as sp
 
-from .geometry_engine import GeometryEngine, GeometryError
+from geometry_engine import GeometryEngine, GeometryError
 
 
 def _print_point_summary(summary: Dict[str, sp.Expr]) -> None:
@@ -45,6 +45,14 @@ def _print_learned_rules(rules: Dict[str, sp.Expr]) -> None:
 def _print_constraints(constraints: Iterable[str]) -> None:
     for idx, constraint in enumerate(constraints, start=1):
         print(f"[{idx}] {constraint} = 0")
+
+
+def _print_constraint_results(results: Sequence[Tuple[sp.Expr, sp.Expr]]) -> None:
+    multi = len(results) > 1
+    for idx, (numerator, denominator) in enumerate(results, start=1):
+        prefix = f"[{idx}] " if multi else ""
+        print(f"{prefix}N = {sp.expand(numerator)}")
+        print(f"{prefix}D = {sp.expand(denominator)}")
 
 
 def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
@@ -74,20 +82,76 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.add_angle_value(A, B, C, angle_expr)
             elif op == "add_circumcenter":
                 engine.add_circumcenter(*step["args"])
+            elif op == "add_midpoint":
+                engine.add_midpoint(*step["args"])
+            elif op == "add_point_reflection":
+                engine.add_point_reflection(*step["args"])
+            elif op == "add_line_reflection":
+                engine.add_line_reflection(*step["args"])
             elif op == "orthocenter":
                 engine.orthocenter_via_altitudes(*step["args"])
             elif op == "intersection":
                 engine.intersection_of_lines(*step["args"])
+            elif op == "line_circle_intersection":
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError(
+                        "line_circle_intersection expects args [line_point1, line_point2, center, radius_point, name]."
+                    )
+                avoid = step.get("avoid")
+                if avoid is None:
+                    engine.line_circle_intersection(*args)
+                else:
+                    if isinstance(avoid, str):
+                        avoid_list = [avoid]
+                    elif isinstance(avoid, (list, tuple)):
+                        avoid_list = list(avoid)
+                    else:
+                        raise GeometryError("avoid must be a string or list of point labels.")
+                    engine.line_circle_intersection(*args, avoid=avoid_list)
             elif op == "centroid":
                 engine.centroid(*step["args"])
+            elif op == "euler_center":
+                args = step.get("args", [])
+                if len(args) == 4:
+                    engine.euler_center(*args)
+                elif len(args) == 6:
+                    engine.euler_center(*args)
+                else:
+                    raise GeometryError("Euler center expects 4 or 6 arguments.")
+            elif op in {"lemoine_point", "lemoine", "symmedian"}:
+                args = step.get("args", [])
+                if len(args) == 4:
+                    engine.lemoine_point(*args)
+                elif len(args) == 5:
+                    engine.lemoine_point(*args)
+                else:
+                    raise GeometryError("Lemoine point expects 4 or 5 arguments.")
+            elif op in {"reflect_point_over_point", "point_reflection"}:
+                engine.reflect_point_over_point(*step["args"])
+            elif op in {"reflect_point_over_line", "line_reflection"}:
+                engine.reflect_point_over_line(*step["args"])
+            elif op == "midpoint":
+                engine.midpoint(*step["args"])
+            elif op == "squared_distance":
+                args = step.get("args", [])
+                if len(args) != 2:
+                    raise GeometryError("squared_distance expects exactly two point labels.")
+                label = step.get("label") or f"|{args[0]}{args[1]}|^2"
+                value = engine.squared_distance(*args)
+                print(f"{label}: {sp.simplify(value)}")
             elif op == "print_points":
                 names = step.get("names")
                 summary = engine.point_summary(names)
                 _print_point_summary(summary)
-            elif op == "perp_check":
-                numerator, denominator = engine.perpendicular_conjugate_free(*step["args"])
-                print(f"N = {sp.expand(numerator)}")
-                print(f"D = {sp.expand(denominator)}")
+            elif op == "constraint_check":
+                constraint = step["constraint"]
+                args = step.get("args", [])
+                if not isinstance(args, (list, tuple)):
+                    raise GeometryError("Constraint check requires an 'args' list.")
+                angle_expr = sp.sympify(step["angle"]) if "angle" in step else None
+                results = engine.constraint_conjugate_free(constraint, list(args), angle=angle_expr)
+                _print_constraint_results(results)
             elif op == "learned_rules":
                 _print_learned_rules(engine.learned_rules())
             elif op == "print_constraints":
@@ -108,22 +172,30 @@ def load_script(path: Path) -> List[Dict[str, Any]]:
 
 
 def _demo_steps() -> List[Dict[str, Any]]:
-    """Workflow mirroring the spec's sample scenario."""
+    """Demonstration showing the Euler circle passing through the midpoint of XP."""
     return [
         {"op": "add_point", "name": "A", "unit_circle": True},
         {"op": "add_point", "name": "B", "unit_circle": True},
         {"op": "add_point", "name": "C", "unit_circle": True},
         {"op": "add_circumcenter", "args": ["A", "B", "C", "O"]},
         {"op": "orthocenter", "args": ["A", "B", "C", "H"]},
-        {"op": "add_point", "name": "P"},
-        {"op": "add_collinear", "args": ["O", "A", "P"]},
-        {"op": "orthocenter", "args": ["P", "A", "B", "K"]},
-        {"op": "orthocenter", "args": ["P", "C", "A", "L"]},
-        {"op": "intersection", "args": ["B", "L", "C", "K", "Q"]},
-        {"op": "centroid", "args": ["A", "B", "C", "G"]},
-        {"op": "add_angle_value", "args": ["A", "B", "P"], "angle": "pi/2"},
-        {"op": "print_points", "names": ["A", "B", "C", "H", "P", "K", "L", "Q", "G"]},
-        {"op": "perp_check", "args": ["A", "Q", "P", "H"]},
+        {"op": "add_point", "name": "X"},
+        {"op": "add_collinear", "args": ["B", "C", "X"]},
+        {"op": "add_point", "name": "X_perp"},
+        {"op": "add_perpendicular", "args": ["X", "X_perp", "B", "C"]},
+        {"op": "intersection", "args": ["X", "X_perp", "A", "C", "Y"]},
+        {"op": "midpoint", "args": ["B", "C", "M_BC"]},
+        {"op": "midpoint", "args": ["A", "C", "M_AC"]},
+        {"op": "reflect_point_over_point", "args": ["X", "M_BC", "Z"]},
+        {"op": "reflect_point_over_point", "args": ["Y", "M_AC", "T"]},
+        {"op": "line_circle_intersection", "args": ["Z", "T", "O", "X", "P"], "avoid": ["Z"]},
+        {"op": "add_circumcenter", "args": ["X", "Z", "P", "O"]},
+        {"op": "midpoint", "args": ["A", "B", "M_AB"]},
+        {"op": "midpoint", "args": ["X", "P", "M_XP"]},
+        {"op": "midpoint", "args": ["O", "H", "N_euler"]},
+        {"op": "squared_distance", "args": ["M_XP", "N_euler"], "label": "|M_XP - (A+B+C)/2|^2"},
+        {"op": "print_points", "names": ["A", "B", "C", "H", "X", "Y", "Z", "T", "P", "M_XP"]},
+        {"op": "constraint_check", "constraint": "concyclic", "args": ["M_AB", "M_BC", "M_AC", "M_XP"]},
         {"op": "learned_rules"},
         {"op": "print_constraints"},
     ]

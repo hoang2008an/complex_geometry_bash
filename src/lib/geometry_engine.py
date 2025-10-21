@@ -25,37 +25,6 @@ class PointRecord:
     zb: sp.Symbol
 
 
-@dataclass(frozen=True)
-class Line:
-    """
-    Algebraic representation of a line in the complex plane.
-
-    The line is encoded as alpha * z + beta * zb + gamma = 0 with optional metadata
-    recording the points used to derive the coefficients.
-    """
-
-    alpha: sp.Expr
-    beta: sp.Expr
-    gamma: sp.Expr
-    points: Tuple[str, ...] = ()
-
-    def evaluate(self, z: sp.Expr, zb: sp.Expr) -> sp.Expr:
-        """Return the symbolic value alpha*z + beta*zb + gamma."""
-        return sp.simplify(self.alpha * z + self.beta * zb + self.gamma)
-
-
-@dataclass(frozen=True)
-class Circle:
-    """
-    Algebraic representation of a circle in the complex plane.
-
-    The circle is defined by a center label and a squared-radius expression.
-    """
-
-    center: str
-    radius_sq: sp.Expr
-    reference_points: Tuple[str, ...] = ()
-
 @dataclass
 class UnitTriangleConfig:
     points: Dict[str, str]
@@ -643,80 +612,6 @@ class GeometryEngine:
         return self.z(Q)
 
     # ------------------------------------------------------------------
-    # Geometric primitives
-    # ------------------------------------------------------------------
-    def line_through_points(self, P: str, Q: str) -> Line:
-        """
-        Return the canonical line passing through points P and Q.
-        """
-        self.ensure_point(P)
-        self.ensure_point(Q)
-        if P == Q:
-            raise GeometryError("Line requires two distinct points.")
-
-        zP, zQ = self.z_symbol(P), self.z_symbol(Q)
-        zbP, zbQ = self.zb_symbol(P), self.zb_symbol(Q)
-
-        alpha = sp.expand(zbQ - zbP)
-        beta = sp.expand(-(zQ - zP))
-        gamma = sp.expand((zQ - zP) * zbP - (zbQ - zbP) * zP)
-        return Line(alpha=sp.simplify(alpha), beta=sp.simplify(beta), gamma=sp.simplify(gamma), points=(P, Q))
-
-    def line_value(self, line: Line, point: str) -> sp.Expr:
-        """
-        Evaluate the line equation at the specified point label.
-        """
-        self.ensure_point(point)
-        zX, zbX = self.z(point), self.zb(point)
-        expr = line.alpha * zX + line.beta * zbX + line.gamma
-        return self._apply_all(expr)
-
-    def add_point_on_line(self, line: Line, point: str) -> None:
-        """
-        Store the constraint that `point` lies on the provided line.
-        """
-        self.ensure_point(point)
-        z_symbol = self.z_symbol(point)
-        zb_symbol = self.zb_symbol(point)
-        constraint = sp.expand(line.alpha * z_symbol + line.beta * zb_symbol + line.gamma)
-        self.add_constraint(constraint)
-
-    def circle_from_center_point(self, center: str, radius_point: str) -> Circle:
-        """
-        Construct a circle given its center and a point on the circumference.
-        """
-        self.ensure_point(center)
-        self.ensure_point(radius_point)
-        if center == radius_point:
-            raise GeometryError("Circle radius point must differ from center.")
-        zC, zbC = self.z_symbol(center), self.zb_symbol(center)
-        zR, zbR = self.z_symbol(radius_point), self.zb_symbol(radius_point)
-        radius_sq = sp.simplify(sp.expand((zR - zC) * (zbR - zbC)))
-        return Circle(center=center, radius_sq=radius_sq, reference_points=(radius_point,))
-
-    def circle_value(self, circle: Circle, point: str) -> sp.Expr:
-        """
-        Evaluate the circle equation (|point - center|^2 - radius_sq).
-        """
-        self.ensure_point(circle.center)
-        self.ensure_point(point)
-        zC, zbC = self.z(circle.center), self.zb(circle.center)
-        zX, zbX = self.z(point), self.zb(point)
-        expr = (zX - zC) * (zbX - zbC) - circle.radius_sq
-        return self._apply_all(expr)
-
-    def add_point_on_circle(self, circle: Circle, point: str) -> None:
-        """
-        Store the constraint that `point` lies on the provided circle.
-        """
-        self.ensure_point(circle.center)
-        self.ensure_point(point)
-        zC, zbC = self.z_symbol(circle.center), self.zb_symbol(circle.center)
-        zX, zbX = self.z_symbol(point), self.zb_symbol(point)
-        constraint = sp.expand((zX - zC) * (zbX - zbC) - circle.radius_sq)
-        self.add_constraint(constraint)
-
-    # ------------------------------------------------------------------
     # Constructions
     # ------------------------------------------------------------------
     def set_main_unit_triangle(
@@ -1215,6 +1110,4 @@ class GeometryEngine:
 __all__ = [
     "GeometryEngine",
     "GeometryError",
-    "Line",
-    "Circle",
 ]

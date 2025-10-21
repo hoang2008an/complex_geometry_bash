@@ -88,10 +88,94 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.add_point_reflection(*step["args"])
             elif op == "add_line_reflection":
                 engine.add_line_reflection(*step["args"])
+            elif op in {"add_triangle_similarity", "triangle_similarity"}:
+                args = step.get("args", [])
+                if len(args) != 6:
+                    raise GeometryError("add_triangle_similarity expects six point labels (A, B, C, D, E, F).")
+                directed_flag = step.get("directed")
+                engine.add_triangle_similarity(*args, directed=True if directed_flag is None else bool(directed_flag))
+            elif op in {
+                "add_triangle_similarity_undirected",
+                "triangle_similarity_undirected",
+                "triangle_similarity_reflected",
+            }:
+                args = step.get("args", [])
+                if len(args) != 6:
+                    raise GeometryError("triangle_similarity_undirected expects six point labels (A, B, C, D, E, F).")
+                engine.add_triangle_similarity(*args, directed=False)
+            elif op in {"add_triangle_congruence", "triangle_congruence", "triangle_equal"}:
+                args = step.get("args", [])
+                if len(args) != 6:
+                    raise GeometryError("add_triangle_congruence expects six point labels (A, B, C, D, E, F).")
+                directed_flag = step.get("directed")
+                engine.add_triangle_congruence(*args, directed=True if directed_flag is None else bool(directed_flag))
+            elif op in {
+                "add_triangle_congruence_undirected",
+                "triangle_congruence_undirected",
+                "triangle_equal_undirected",
+            }:
+                args = step.get("args", [])
+                if len(args) != 6:
+                    raise GeometryError("triangle_congruence_undirected expects six point labels (A, B, C, D, E, F).")
+                engine.add_triangle_congruence(*args, directed=False)
             elif op == "orthocenter":
                 engine.orthocenter_via_altitudes(*step["args"])
             elif op == "intersection":
                 engine.intersection_of_lines(*step["args"])
+            elif op == "circumcenter":
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError("circumcenter expects arguments [A, B, C, U].")
+                engine.circumcenter(*args)
+            elif op in {"set_unit_triangle", "set_main_unit_triangle"}:
+                raw_args = step.get("args")
+                triangle = step.get("triangle")
+                roots = step.get("roots")
+
+                if raw_args and triangle:
+                    raise GeometryError("Provide triangle vertices via either 'args' or 'triangle', not both.")
+
+                if raw_args is not None:
+                    if not isinstance(raw_args, (list, tuple)):
+                        raise GeometryError("set_unit_triangle 'args' must be a list.")
+                    if len(raw_args) == 3:
+                        triangle = list(raw_args)
+                    elif len(raw_args) == 6:
+                        triangle = list(raw_args[:3])
+                        roots = list(raw_args[3:])
+                    else:
+                        raise GeometryError("set_unit_triangle expects 3 or 6 entries in 'args'.")
+
+                if triangle is None:
+                    raise GeometryError("set_unit_triangle requires triangle vertices.")
+                if not isinstance(triangle, (list, tuple)) or len(triangle) != 3:
+                    raise GeometryError("Triangle vertices must be a list of three labels.")
+
+                root_names = None
+                if roots is not None:
+                    if not isinstance(roots, (list, tuple)) or len(roots) != 3:
+                        raise GeometryError("roots must provide exactly three labels.")
+                    root_names = list(roots)
+
+                engine.set_main_unit_triangle(*triangle, root_names=root_names)
+            elif op in {"unit_triangle_incenter", "main_triangle_incenter"}:
+                name = step.get("name")
+                if not isinstance(name, str):
+                    raise GeometryError("unit_triangle_incenter requires a 'name' field.")
+                engine.main_triangle_incenter(name)
+            elif op in {"unit_triangle_excenter", "main_triangle_excenter"}:
+                name = step.get("name")
+                which = step.get("which")
+                if not isinstance(name, str) or not isinstance(which, str):
+                    raise GeometryError("unit_triangle_excenter requires 'name' and 'which' fields.")
+                engine.main_triangle_excenter(which, name)
+            elif op in {"unit_triangle_arc_midpoint", "main_triangle_arc_midpoint"}:
+                name = step.get("name")
+                which = step.get("which")
+                if not isinstance(name, str) or not isinstance(which, str):
+                    raise GeometryError("unit_triangle_arc_midpoint requires 'name' and 'which' fields.")
+                containing = bool(step.get("containing_vertex") or step.get("containing"))
+                engine.main_triangle_arc_midpoint(which, name, containing_vertex=containing)
             elif op == "line_circle_intersection":
                 args = step.get("args", [])
                 if len(args) != 5:
@@ -150,7 +234,13 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 if not isinstance(args, (list, tuple)):
                     raise GeometryError("Constraint check requires an 'args' list.")
                 angle_expr = sp.sympify(step["angle"]) if "angle" in step else None
-                results = engine.constraint_conjugate_free(constraint, list(args), angle=angle_expr)
+                directed_flag = step.get("directed")
+                results = engine.constraint_conjugate_free(
+                    constraint,
+                    list(args),
+                    angle=angle_expr,
+                    directed=directed_flag,
+                )
                 _print_constraint_results(results)
             elif op == "learned_rules":
                 _print_learned_rules(engine.learned_rules())

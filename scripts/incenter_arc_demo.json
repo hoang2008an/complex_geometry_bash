@@ -1,0 +1,21 @@
+{
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "unit_triangle_incenter", "name": "I"},
+    {"op": "unit_triangle_arc_midpoint", "which": "A", "name": "M"},
+    {"op": "add_collinear", "args": ["A", "I", "M"]},
+    {"op": "circumcenter", "args": ["A", "O", "M", "U_AOM"]},
+    {"op": "line_circle_intersection", "args": ["O", "I", "U_AOM", "A", "P"], "avoid": ["O"]},
+    {"op": "midpoint", "args": ["P", "I", "Q_PI"]},
+    {"op": "add_point", "name": "Q_aux"},
+    {"op": "add_perpendicular", "args": ["P", "I", "Q_PI", "Q_aux"]},
+    {"op": "intersection", "args": ["B", "C", "Q_PI", "Q_aux", "T"]},
+    {"op": "constraint_check", "constraint": "perpendicular", "args": ["A", "I", "I", "T"]},
+    {"op": "print_points", "names": ["A", "B", "C", "I", "M", "P", "T"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

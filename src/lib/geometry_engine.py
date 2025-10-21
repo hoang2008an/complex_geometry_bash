@@ -10,7 +10,7 @@ conjugate substitution rules whenever a single-conjugate equation is detected.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 import sympy as sp
 
@@ -23,6 +23,12 @@ class GeometryError(RuntimeError):
 class PointRecord:
     z: sp.Symbol
     zb: sp.Symbol
+
+
+@dataclass
+class UnitTriangleConfig:
+    points: Dict[str, str]
+    roots: Dict[str, str]
 
 
 class GeometryEngine:
@@ -44,6 +50,8 @@ class GeometryEngine:
         self.value_subs: Dict[sp.Symbol, sp.Expr] = {}
         self.point_assignments: Dict[sp.Symbol, sp.Expr] = {}
         self.learned_subs: Dict[sp.Symbol, sp.Expr] = {}
+        self.unit_circle_points: Set[str] = set()
+        self._main_unit_triangle: Optional[UnitTriangleConfig] = None
 
         # Declare origin O with fixed coordinates at 0
         self.add_point("O")
@@ -84,11 +92,12 @@ class GeometryEngine:
     def add_unit_circle(self, name: str) -> None:
         """Declare that point name lies on the unit circle."""
         self.ensure_point(name)
-        record = self.points[name]
-        if record.zb in self.learned_subs:
+        if name in self.unit_circle_points:
             return
+        record = self.points[name]
         constraint = record.z * record.zb - 1
         self.add_constraint(constraint)
+        self.unit_circle_points.add(name)
 
     # ------------------------------------------------------------------
     # Symbol and expression helpers
@@ -257,6 +266,87 @@ class GeometryEngine:
         poly = w_conj * (zA - zB) * (zbC - zbB) - w * (zbA - zbB) * (zC - zB)
         return poly if raw else sp.expand(poly)
 
+    def triangle_similarity_polys(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        E: str,
+        F: str,
+        *,
+        directed: bool = True,
+        raw: bool = False,
+    ) -> Tuple[sp.Expr, ...]:
+        """
+        Return polynomial constraints enforcing similarity between triangles ABC and DEF.
+
+        Parameters
+        ----------
+        directed:
+            When True, enforce orientation-preserving similarity.  When False, allow mirrored
+            similarity (orientation-reversing).
+        """
+        zA, zB, zC = self.z_symbol(A), self.z_symbol(B), self.z_symbol(C)
+        zD, zE, zF = self.z_symbol(D), self.z_symbol(E), self.z_symbol(F)
+        zbA, zbB, zbC = self.zb_symbol(A), self.zb_symbol(B), self.zb_symbol(C)
+        zbD, zbE, zbF = self.zb_symbol(D), self.zb_symbol(E), self.zb_symbol(F)
+
+        if directed:
+            eq_primary = (zA - zB) * (zE - zF) - (zB - zC) * (zD - zE)
+            eq_conjugate = (zbA - zbB) * (zbE - zbF) - (zbB - zbC) * (zbD - zbE)
+        else:
+            eq_primary = (zA - zB) * (zbE - zbF) - (zB - zC) * (zbD - zbE)
+            eq_conjugate = (zbA - zbB) * (zE - zF) - (zbB - zbC) * (zD - zE)
+
+        if not raw:
+            eq_primary = sp.expand(eq_primary)
+            eq_conjugate = sp.expand(eq_conjugate)
+
+        return eq_primary, eq_conjugate
+
+    def triangle_congruence_polys(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        E: str,
+        F: str,
+        *,
+        directed: bool = True,
+        raw: bool = False,
+    ) -> Tuple[sp.Expr, ...]:
+        """
+        Return polynomial constraints enforcing triangle ABC congruent to triangle DEF.
+
+        Congruence is modeled as similarity plus equality of a reference side length.  When
+        ``directed`` is False, orientation reversal (mirror) is permitted.
+        """
+        similarity_eqs = self.triangle_similarity_polys(
+            A,
+            B,
+            C,
+            D,
+            E,
+            F,
+            directed=directed,
+            raw=True,
+        )
+
+        zA, zB = self.z_symbol(A), self.z_symbol(B)
+        zD, zE = self.z_symbol(D), self.z_symbol(E)
+        zbA, zbB = self.zb_symbol(A), self.zb_symbol(B)
+        zbD, zbE = self.zb_symbol(D), self.zb_symbol(E)
+
+        length_eq = (zA - zB) * (zbA - zbB) - (zD - zE) * (zbD - zbE)
+
+        if not raw:
+            similarity_eqs = tuple(sp.expand(eq) for eq in similarity_eqs)
+            length_eq = sp.expand(length_eq)
+
+        return (*similarity_eqs, length_eq)
+
     def circumcenter_polys(self, A: str, B: str, C: str, U: str, *, raw: bool = False) -> Tuple[sp.Expr, sp.Expr]:
         """
         Return the two polynomials that enforce U as the circumcenter of triangle ABC.
@@ -350,6 +440,36 @@ class GeometryEngine:
         """Store the constraint that angle ABC equals the specified angle (in radians)."""
         poly = self.angle_value_poly(A, B, C, angle_radians)
         self.add_constraint(poly)
+
+    def add_triangle_similarity(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        E: str,
+        F: str,
+        *,
+        directed: bool = True,
+    ) -> None:
+        """Store similarity constraints between triangles ABC and DEF."""
+        for eq in self.triangle_similarity_polys(A, B, C, D, E, F, directed=directed):
+            self.add_constraint(eq)
+
+    def add_triangle_congruence(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        E: str,
+        F: str,
+        *,
+        directed: bool = True,
+    ) -> None:
+        """Store congruence constraints (triangle equality) between ABC and DEF."""
+        for eq in self.triangle_congruence_polys(A, B, C, D, E, F, directed=directed):
+            self.add_constraint(eq)
 
     def add_circumcenter(self, A: str, B: str, C: str, U: str) -> None:
         """
@@ -494,6 +614,160 @@ class GeometryEngine:
     # ------------------------------------------------------------------
     # Constructions
     # ------------------------------------------------------------------
+    def set_main_unit_triangle(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        *,
+        root_names: Optional[Sequence[str]] = None,
+    ) -> None:
+        """
+        Declare triangle ABC as the main unit-circle triangle and assign square-root auxiliaries.
+
+        Each vertex receives a dedicated auxiliary point X such that z_A = z_X^2, with X constrained
+        to the unit circle.  The configuration is stored for downstream helpers (incenter, excenters,
+        arc midpoints).  Optional `root_names` supplies custom labels (x, y, z) for the auxiliary
+        square-root points corresponding to A, B, C respectively.
+        """
+        canonical_labels = ("A", "B", "C")
+        points_map = dict(zip(canonical_labels, (A, B, C)))
+        if len({A, B, C}) != 3:
+            raise GeometryError("Main unit triangle requires three distinct vertex labels.")
+
+        for vertex in points_map.values():
+            self.ensure_point(vertex)
+            if vertex not in self.unit_circle_points:
+                raise GeometryError(f"Point '{vertex}' must be declared on the unit circle before configuring the main triangle.")
+
+        if root_names is not None:
+            if len(root_names) != 3:
+                raise GeometryError("root_names must provide exactly three auxiliary labels.")
+            if any(not isinstance(label, str) for label in root_names):
+                raise GeometryError("All root_names entries must be strings.")
+            if len(set(root_names)) != 3:
+                raise GeometryError("root_names must contain three distinct labels.")
+            if any(label in points_map.values() for label in root_names):
+                raise GeometryError("root_names must differ from the main triangle vertex labels.")
+            root_sequence = tuple(root_names)
+        else:
+            root_sequence = (
+                self._unit_root_name("A"),
+                self._unit_root_name("B"),
+                self._unit_root_name("C"),
+            )
+
+        roots: Dict[str, str] = {}
+        for index, canonical in enumerate(canonical_labels):
+            vertex = points_map[canonical]
+            root_label = root_sequence[index]
+            self.add_point(root_label)
+            self.add_unit_circle(root_label)
+            z_root = self.z_symbol(root_label)
+            zb_root = self.zb_symbol(root_label)
+            self._set_point_assignment(vertex, sp.simplify(z_root ** 2), sp.simplify(zb_root ** 2))
+            roots[canonical] = root_label
+
+        self._main_unit_triangle = UnitTriangleConfig(points=points_map, roots=roots)
+
+    def main_triangle_incenter(self, name: str) -> sp.Expr:
+        """
+        Assign the incenter of the configured main triangle using the -xy - yz - zx formula.
+        """
+        config = self._require_main_unit_triangle()
+        self.add_point(name)
+
+        rootA = config.roots["A"]
+        rootB = config.roots["B"]
+        rootC = config.roots["C"]
+
+        z_rootA = self.z_symbol(rootA)
+        z_rootB = self.z_symbol(rootB)
+        z_rootC = self.z_symbol(rootC)
+        zb_rootA = self.zb_symbol(rootA)
+        zb_rootB = self.zb_symbol(rootB)
+        zb_rootC = self.zb_symbol(rootC)
+
+        z_expr = - (z_rootA * z_rootB + z_rootB * z_rootC + z_rootC * z_rootA)
+        zb_expr = - (zb_rootA * zb_rootB + zb_rootB * zb_rootC + zb_rootC * zb_rootA)
+        self._set_point_assignment(name, sp.simplify(z_expr), sp.simplify(zb_expr))
+        return self.z(name)
+
+    def main_triangle_excenter(self, which: str, name: str) -> sp.Expr:
+        """
+        Assign the specified excenter of the configured main triangle using xy±yz±zx formulas.
+
+        Parameters
+        ----------
+        which:
+            One of 'A', 'B', 'C', selecting the excenter opposite the corresponding vertex.
+        name:
+            Label for the constructed excenter.
+        """
+        config = self._require_main_unit_triangle()
+        normalized = which.upper()
+        if normalized not in config.roots:
+            raise GeometryError(f"Excenter '{which}' is not valid for the configured main triangle.")
+
+        rootA = config.roots["A"]
+        rootB = config.roots["B"]
+        rootC = config.roots["C"]
+        z_rootA = self.z_symbol(rootA)
+        z_rootB = self.z_symbol(rootB)
+        z_rootC = self.z_symbol(rootC)
+        zb_rootA = self.zb_symbol(rootA)
+        zb_rootB = self.zb_symbol(rootB)
+        zb_rootC = self.zb_symbol(rootC)
+
+        patterns = {
+            "A": (sp.Integer(1), sp.Integer(1), sp.Integer(-1)),
+            "B": (sp.Integer(1), sp.Integer(-1), sp.Integer(1)),
+            "C": (sp.Integer(-1), sp.Integer(1), sp.Integer(1)),
+        }
+        coeff_ab, coeff_bc, coeff_ca = patterns[normalized]
+
+        z_expr = coeff_ab * z_rootA * z_rootB + coeff_bc * z_rootB * z_rootC + coeff_ca * z_rootC * z_rootA
+        zb_expr = coeff_ab * zb_rootA * zb_rootB + coeff_bc * zb_rootB * zb_rootC + coeff_ca * zb_rootC * zb_rootA
+
+        self.add_point(name)
+        self._set_point_assignment(name, sp.simplify(z_expr), sp.simplify(zb_expr))
+        return self.z(name)
+
+    def main_triangle_arc_midpoint(self, which: str, name: str, *, containing_vertex: bool = False) -> sp.Expr:
+        """
+        Assign the midpoint of the arc opposite vertex `which` on the circumcircle.
+
+        Parameters
+        ----------
+        which:
+            One of 'A', 'B', 'C'.  For example, 'A' yields the midpoint of arc BC.
+        name:
+            Label for the constructed midpoint.
+        containing_vertex:
+            If False (default), return the midpoint of the arc not containing the vertex.
+            If True, return the midpoint of the complementary arc containing the vertex.
+        """
+        config = self._require_main_unit_triangle()
+        normalized = which.upper()
+        if normalized not in config.roots:
+            raise GeometryError(f"Arc midpoint '{which}' is not valid for the configured main triangle.")
+
+        if normalized == "A":
+            root1, root2 = config.roots["B"], config.roots["C"]
+        elif normalized == "B":
+            root1, root2 = config.roots["C"], config.roots["A"]
+        else:  # normalized == "C"
+            root1, root2 = config.roots["A"], config.roots["B"]
+
+        sign = sp.Integer(1) if containing_vertex else sp.Integer(-1)
+        z_expr = sign * self.z_symbol(root1) * self.z_symbol(root2)
+        zb_expr = sign * self.zb_symbol(root1) * self.zb_symbol(root2)
+
+        self.add_point(name)
+        self._set_point_assignment(name, sp.simplify(z_expr), sp.simplify(zb_expr))
+        self.add_unit_circle(name)
+        return self.z(name)
+
     def orthocenter_via_altitudes(self, T1: str, T2: str, T3: str, H: str) -> Tuple[sp.Expr, sp.Expr]:
         """
         Construct the orthocenter H of triangle T1T2T3 by solving the two altitude constraints.
@@ -607,6 +881,11 @@ class GeometryEngine:
             index += 1
         return candidate
 
+    def _unit_root_name(self, vertex: str) -> str:
+        """Deterministic label for the auxiliary square-root point of a vertex."""
+        sanitized = vertex.replace(" ", "_")
+        return f"__unit_root_{sanitized}"
+
     def _midpoint_label(self, P: str, Q: str) -> str:
         """Deterministic internal name for the midpoint of segment PQ."""
         ordered = tuple(sorted((P, Q)))
@@ -665,6 +944,20 @@ class GeometryEngine:
         eq2 = self.perpendicular_poly(Q, name, Q, center)
         return self._solve_point_from_equations(name, [eq1, eq2])
 
+    def _require_main_unit_triangle(self) -> UnitTriangleConfig:
+        """Return the configured main unit triangle or raise a helpful error."""
+        if self._main_unit_triangle is None:
+            raise GeometryError("Main unit triangle is not configured. Use set_main_unit_triangle first.")
+        return self._main_unit_triangle
+
+    def _unit_root_label(self, vertex: str) -> str:
+        """Return the auxiliary root label for a vertex of the main unit triangle."""
+        config = self._require_main_unit_triangle()
+        normalized = vertex.upper()
+        if normalized not in config.roots:
+            raise GeometryError(f"Point '{vertex}' is not part of the main unit triangle.")
+        return config.roots[normalized]
+
     # ------------------------------------------------------------------
     # Constraint inspection helpers
     # ------------------------------------------------------------------
@@ -689,6 +982,7 @@ class GeometryEngine:
         args: Sequence[str],
         *,
         angle: Optional[sp.Expr] = None,
+        directed: Optional[bool] = None,
     ) -> List[sp.Expr]:
         """
         Resolve the requested constraint into the underlying polynomial(s).
@@ -731,6 +1025,44 @@ class GeometryEngine:
             if len(args) != 4:
                 raise GeometryError("Line reflection expects four point labels (P, A, B, Q).")
             return list(self.line_reflection_polys(*args))
+        if normalized in {
+            "triangle_similarity",
+            "triangle_similarity_directed",
+            "similar_triangle",
+            "similar_triangle_directed",
+        }:
+            if len(args) != 6:
+                raise GeometryError("Triangle similarity expects six point labels (A, B, C, D, E, F).")
+            directed_flag = True if directed is None else bool(directed)
+            return list(self.triangle_similarity_polys(*args, directed=directed_flag))
+        if normalized in {
+            "triangle_similarity_undirected",
+            "triangle_similarity_reflected",
+            "similar_triangle_undirected",
+            "similar_triangle_reflected",
+        }:
+            if len(args) != 6:
+                raise GeometryError("Triangle similarity expects six point labels (A, B, C, D, E, F).")
+            return list(self.triangle_similarity_polys(*args, directed=False))
+        if normalized in {
+            "triangle_congruence",
+            "triangle_equal",
+            "triangle_congruent",
+            "triangles_equal",
+        }:
+            if len(args) != 6:
+                raise GeometryError("Triangle congruence expects six point labels (A, B, C, D, E, F).")
+            directed_flag = True if directed is None else bool(directed)
+            return list(self.triangle_congruence_polys(*args, directed=directed_flag))
+        if normalized in {
+            "triangle_congruence_undirected",
+            "triangle_congruence_reflected",
+            "triangle_equal_undirected",
+            "triangle_congruent_undirected",
+        }:
+            if len(args) != 6:
+                raise GeometryError("Triangle congruence expects six point labels (A, B, C, D, E, F).")
+            return list(self.triangle_congruence_polys(*args, directed=False))
 
         raise GeometryError(f"Unsupported constraint '{constraint}'.")
 
@@ -740,11 +1072,12 @@ class GeometryEngine:
         args: Sequence[str],
         *,
         angle: Optional[sp.Expr] = None,
+        directed: Optional[bool] = None,
     ) -> List[Tuple[sp.Expr, sp.Expr]]:
         """
         Return conjugate-free numerator/denominator pairs for the chosen constraint.
         """
-        polys = self._constraint_polynomials(constraint, args, angle=angle)
+        polys = self._constraint_polynomials(constraint, args, angle=angle, directed=directed)
         return [self._conjugate_free_expr(poly) for poly in polys]
 
     def perpendicular_conjugate_free(self, A: str, B: str, C: str, D: str) -> Tuple[sp.Expr, sp.Expr]:

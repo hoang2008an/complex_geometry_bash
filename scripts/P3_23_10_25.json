@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "circumcenter", "args": ["O", "C", "A", "K"]},
+    {"op": "circumcenter", "args": ["O", "A", "B", "L"]},
+    {"op": "orthocenter", "args": ["K", "C", "A", "M"]},
+    {"op": "orthocenter", "args": ["L", "A", "B", "N"]},
+    {"op": "circumcenter", "args": ["A", "K", "M", "U_AKM"]},
+    {"op": "circumcenter", "args": ["A", "L", "N", "U_ALN"]},
+    {"op": "circle_intersection", "args": ["U_AKM", "K", "U_ALN", "L", "P"], "avoid": ["A"]},
+    {"op": "intersection", "args": ["B", "N", "C", "M", "Q"]},
+    {"op": "circumcenter", "args": ["O", "A", "P", "T"]},
+    {"op": "constraint_check", "constraint": "perpendicular", "args": ["T", "O", "O", "Q"]},
+    {"op": "print_points", "names": ["A", "B", "C", "O", "K", "L", "M", "N", "P", "Q", "T"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

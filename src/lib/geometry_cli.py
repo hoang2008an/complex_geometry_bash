@@ -176,6 +176,42 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                     raise GeometryError("unit_triangle_arc_midpoint requires 'name' and 'which' fields.")
                 containing = bool(step.get("containing_vertex") or step.get("containing"))
                 engine.main_triangle_arc_midpoint(which, name, containing_vertex=containing)
+            elif op in {"line_from_points", "line_through"}:
+                name = step.get("name")
+                args = step.get("args", [])
+                if not isinstance(name, str) or len(args) != 2:
+                    raise GeometryError("line_from_points expects 'name' and args [P, Q].")
+                if name in engine.lines:
+                    raise GeometryError(f"Line '{name}' is already defined.")
+                engine.lines[name] = engine.line_through_points(*args)
+            elif op in {"line_init", "line_new"}:
+                name = step.get("name")
+                if not isinstance(name, str):
+                    raise GeometryError("line_init expects a 'name'.")
+                if name in engine.lines:
+                    raise GeometryError(f"Line '{name}' is already defined.")
+                engine.lines[name] = engine.symbolic_line(name)
+            elif op in {"line_from_coefficients", "line_define"}:
+                name = step.get("name")
+                alpha = step.get("alpha")
+                beta = step.get("beta")
+                gamma = step.get("gamma")
+                if not isinstance(name, str):
+                    raise GeometryError("line_from_coefficients requires a 'name'.")
+                if alpha is None or beta is None or gamma is None:
+                    raise GeometryError("line_from_coefficients requires 'alpha', 'beta', and 'gamma'.")
+                if name in engine.lines:
+                    raise GeometryError(f"Line '{name}' is already defined.")
+                line = engine.line_from_coefficients(sp.sympify(alpha), sp.sympify(beta), sp.sympify(gamma))
+                engine.lines[name] = line
+            elif op == "point_on_line":
+                line_name = step.get("line")
+                point = step.get("point")
+                if not isinstance(line_name, str) or not isinstance(point, str):
+                    raise GeometryError("point_on_line expects 'line' and 'point'.")
+                if line_name not in engine.lines:
+                    raise GeometryError(f"Line '{line_name}' is not defined.")
+                engine.add_point_on_line(engine.lines[line_name], point)
             elif op == "line_circle_intersection":
                 args = step.get("args", [])
                 if len(args) != 5:
@@ -193,6 +229,162 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                     else:
                         raise GeometryError("avoid must be a string or list of point labels.")
                     engine.line_circle_intersection(*args, avoid=avoid_list)
+            elif op in {"circle_from_three_points", "circle_three_points"}:
+                name = step.get("name")
+                args = step.get("args", [])
+                if not isinstance(name, str):
+                    raise GeometryError("circle_from_three_points requires a 'name'.")
+                if len(args) != 3:
+                    raise GeometryError("circle_from_three_points expects args [A, B, C].")
+                engine.circle_from_three_points(name, *args)
+            elif op in {
+                "line_circle_object_intersection",
+                "line_circle_object_intersections",
+                "line_circle_object",
+            }:
+                line_name = step.get("line")
+                circle_name = step.get("circle")
+                names = step.get("names")
+                if not isinstance(line_name, str):
+                    raise GeometryError("line_circle_object_intersection requires 'line'.")
+                if not isinstance(circle_name, str):
+                    raise GeometryError("line_circle_object_intersection requires 'circle'.")
+                if not isinstance(names, (list, tuple)) or not names:
+                    raise GeometryError("line_circle_object_intersection requires a non-empty 'names' list.")
+                point_names = []
+                for entry in names:
+                    if not isinstance(entry, str):
+                        raise GeometryError("Intersection point labels must be strings.")
+                    point_names.append(entry)
+                avoid = step.get("avoid")
+                if avoid is None:
+                    engine.line_circle_object_intersections(line_name, circle_name, point_names)
+                else:
+                    if isinstance(avoid, str):
+                        avoid_list = [avoid]
+                    elif isinstance(avoid, (list, tuple)):
+                        avoid_list = list(avoid)
+                    else:
+                        raise GeometryError("avoid must be a string or list of point labels.")
+                    engine.line_circle_object_intersections(line_name, circle_name, point_names, avoid=avoid_list)
+            elif op in {
+                "circle_object_intersection",
+                "circle_object_intersections",
+                "circle_circle_object",
+            }:
+                circle1_name = step.get("circle1")
+                circle2_name = step.get("circle2")
+                names = step.get("names")
+                if not isinstance(circle1_name, str):
+                    raise GeometryError("circle_object_intersection requires 'circle1'.")
+                if not isinstance(circle2_name, str):
+                    raise GeometryError("circle_object_intersection requires 'circle2'.")
+                if not isinstance(names, (list, tuple)) or not names:
+                    raise GeometryError("circle_object_intersection requires a non-empty 'names' list.")
+                point_names = []
+                for entry in names:
+                    if not isinstance(entry, str):
+                        raise GeometryError("Intersection point labels must be strings.")
+                    point_names.append(entry)
+                avoid = step.get("avoid")
+                if avoid is None:
+                    engine.circle_object_intersections(circle1_name, circle2_name, point_names)
+                else:
+                    if isinstance(avoid, str):
+                        avoid_list = [avoid]
+                    elif isinstance(avoid, (list, tuple)):
+                        avoid_list = list(avoid)
+                    else:
+                        raise GeometryError("avoid must be a string or list of point labels.")
+                    engine.circle_object_intersections(circle1_name, circle2_name, point_names, avoid=avoid_list)
+            elif op in {"radical_line", "circle_radical_line"}:
+                line_name = step.get("name")
+                circle1_name = step.get("circle1")
+                circle2_name = step.get("circle2")
+                if not isinstance(line_name, str):
+                    raise GeometryError("radical_line requires a 'name' for the resulting line.")
+                if not isinstance(circle1_name, str) or not isinstance(circle2_name, str):
+                    raise GeometryError("radical_line requires 'circle1' and 'circle2' labels.")
+                engine.radical_line_from_circles(circle1_name, circle2_name, line_name)
+            elif op in {
+                "tangent_lines_point_circle",
+                "point_circle_tangents",
+                "tangent_line_point_circle",
+            }:
+                point = step.get("point")
+                circle_name = step.get("circle")
+                line_entries = step.get("lines")
+                if not isinstance(point, str):
+                    raise GeometryError("tangent_lines_point_circle requires a 'point' label.")
+                if not isinstance(circle_name, str):
+                    raise GeometryError("tangent_lines_point_circle requires a 'circle' name.")
+                if not isinstance(line_entries, (list, tuple)) or not line_entries:
+                    raise GeometryError("tangent_lines_point_circle expects a non-empty 'lines' list.")
+                line_names = []
+                for entry in line_entries:
+                    if not isinstance(entry, str):
+                        raise GeometryError("Line labels must be strings.")
+                    line_names.append(entry)
+                tangent_points = step.get("points") or step.get("tangent_points")
+                if tangent_points is not None:
+                    if not isinstance(tangent_points, (list, tuple)):
+                        raise GeometryError("tangent point labels must be provided as a list.")
+                    tangent_point_names = []
+                    for label in tangent_points:
+                        if not isinstance(label, str):
+                            raise GeometryError("Tangent point labels must be strings.")
+                        tangent_point_names.append(label)
+                else:
+                    tangent_point_names = None
+                engine.tangent_lines_from_point_to_circle(
+                    point,
+                    circle_name,
+                    line_names,
+                    tangent_point_names=tangent_point_names,
+                )
+            elif op == "circle_intersection":
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError(
+                        "circle_intersection expects args [center1, radius_point1, center2, radius_point2, name]."
+                    )
+                avoid = step.get("avoid")
+                if avoid is None:
+                    engine.circle_intersection(*args)
+                else:
+                    if isinstance(avoid, str):
+                        avoid_list = [avoid]
+                    elif isinstance(avoid, (list, tuple)):
+                        avoid_list = list(avoid)
+                    else:
+                        raise GeometryError("avoid must be a string or list of point labels.")
+                    engine.circle_intersection(*args, avoid=avoid_list)
+            elif op in {"avoid", "add_avoid", "distinct_points"}:
+                args = step.get("args", [])
+                if len(args) != 2:
+                    raise GeometryError("avoid expects args [P, Q].")
+                engine.add_distinct_points(*args)
+            elif op in {"perpendicular_lines", "line_perpendicular"}:
+                args = step.get("args", [])
+                if len(args) != 2:
+                    raise GeometryError("perpendicular_lines expects args [line1_name, line2_name].")
+                line1_name, line2_name = args
+                if not isinstance(line1_name, str) or not isinstance(line2_name, str):
+                    raise GeometryError("perpendicular_lines arguments must be line labels.")
+                if line1_name not in engine.lines or line2_name not in engine.lines:
+                    missing = [name for name in (line1_name, line2_name) if name not in engine.lines]
+                    raise GeometryError(f"Lines not defined: {', '.join(missing)}.")
+                engine.add_perpendicular_lines(engine.lines[line1_name], engine.lines[line2_name])
+            elif op in {"line_intersection", "intersection_lines"}:
+                args = step.get("args", [])
+                if len(args) != 3:
+                    raise GeometryError("line_intersection expects args [line1_name, line2_name, point_label].")
+                line1_name, line2_name, point_label = args
+                if line1_name not in engine.lines:
+                    raise GeometryError(f"Line '{line1_name}' is not defined.")
+                if line2_name not in engine.lines:
+                    raise GeometryError(f"Line '{line2_name}' is not defined.")
+                engine.line_intersection(engine.lines[line1_name], engine.lines[line2_name], point_label)
             elif op == "centroid":
                 engine.centroid(*step["args"])
             elif op == "euler_center":

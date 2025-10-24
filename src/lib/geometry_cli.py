@@ -88,6 +88,21 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.add_point_reflection(*step["args"])
             elif op == "add_line_reflection":
                 engine.add_line_reflection(*step["args"])
+            elif op in {"add_isogonal_reflection", "isogonal_reflection", "angle_bisector_reflection"}:
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError("isogonal_reflection expects args [A, B, C, D, E].")
+                engine.add_isogonal_reflection(*args)
+            elif op == "add_isogonal_conjugate":
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError("add_isogonal_conjugate expects args [A, B, C, P, Q].")
+                engine.add_isogonal_conjugate(*args)
+            elif op in {"isogonal_conjugate", "isogonal_conj"}:
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError("isogonal_conjugate expects args [A, B, C, P, Q].")
+                engine.isogonal_conjugate_point(*args)
             elif op in {"add_triangle_similarity", "triangle_similarity"}:
                 args = step.get("args", [])
                 if len(args) != 6:

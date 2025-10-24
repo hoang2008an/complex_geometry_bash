@@ -1,0 +1,20 @@
+{
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "main_triangle_incenter", "name": "I"},
+    {"op": "intersection", "args": ["A", "I", "B", "C", "A_prime"]},
+    {"op": "intersection", "args": ["B", "I", "C", "A", "B_prime"]},
+    {"op": "intersection", "args": ["C", "I", "A", "B", "C_prime"]},
+    {"op": "isogonal_conjugate", "args": ["I", "B_prime", "C_prime", "A", "A_star"]},
+    {"op": "isogonal_conjugate", "args": ["I", "C_prime", "A_prime", "B", "B_star"]},
+    {"op": "isogonal_conjugate", "args": ["I", "A_prime", "B_prime", "C", "C_star"]},
+    {"op": "isogonal_conjugate", "args": ["A_star", "B_star", "C_star", "I", "I_star"]},
+    {"op": "constraint_check", "constraint": "collinear", "args": ["I_star", "O", "I"]},
+    {"op": "print_points", "names": ["A", "B", "C", "I", "O", "A_prime", "B_prime", "C_prime", "A_star", "B_star", "C_star", "I_star"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

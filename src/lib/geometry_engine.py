@@ -458,6 +458,81 @@ class GeometryEngine:
 
         return eq_perp, eq_mid_z, eq_mid_zb, collinear_midpoint
 
+    def isogonal_reflection_poly(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        E: str,
+        *,
+        raw: bool = False,
+    ) -> sp.Expr:
+        """
+        Polynomial enforcing that lines AD and AE are isogonal with respect to angle BAC.
+
+        The condition is expressed through complex directions:
+
+            (z_D - z_A)(z_E - z_A) / conj((z_D - z_A)(z_E - z_A))
+            = (z_B - z_A)(z_C - z_A) / conj((z_B - z_A)(z_C - z_A))
+
+        which simplifies to the cross-multiplication below.
+        """
+        for label in (A, B, C, D, E):
+            self.ensure_point(label)
+
+        if B == A or C == A or B == C:
+            raise GeometryError("Isogonal reflection requires three distinct vertices A, B, C.")
+
+        zA = self.z_symbol(A)
+        zB = self.z_symbol(B)
+        zC = self.z_symbol(C)
+        zD = self.z_symbol(D)
+        zE = self.z_symbol(E)
+
+        zbA = self.zb_symbol(A)
+        zbB = self.zb_symbol(B)
+        zbC = self.zb_symbol(C)
+        zbD = self.zb_symbol(D)
+        zbE = self.zb_symbol(E)
+
+        left = (zD - zA) * (zE - zA) * (zbB - zbA) * (zbC - zbA)
+        right = (zB - zA) * (zC - zA) * (zbD - zbA) * (zbE - zbA)
+        expr = left - right
+        return expr if raw else sp.expand(expr)
+
+    def isogonal_conjugate_polys(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        P: str,
+        Q: str,
+        *,
+        raw: bool = False,
+    ) -> Tuple[sp.Expr, sp.Expr, sp.Expr]:
+        """
+        Polynomials enforcing that Q is the isogonal conjugate of P with respect to triangle ABC.
+
+        The condition is captured by requiring AP/AQ, BP/BQ, and CP/CQ pairs to be isogonal at
+        each vertex, which reuses the isogonal reflection identity.
+        """
+        vertex_labels = {A, B, C}
+        if len(vertex_labels) != 3:
+            raise GeometryError("Isogonal conjugate requires three distinct triangle vertices (A, B, C).")
+
+        for label in (A, B, C, P, Q):
+            self.ensure_point(label)
+
+        eq_A = self.isogonal_reflection_poly(A, B, C, P, Q, raw=True)
+        eq_B = self.isogonal_reflection_poly(B, C, A, P, Q, raw=True)
+        eq_C = self.isogonal_reflection_poly(C, A, B, P, Q, raw=True)
+
+        if raw:
+            return eq_A, eq_B, eq_C
+
+        return sp.expand(eq_A), sp.expand(eq_B), sp.expand(eq_C)
+
     # ------------------------------------------------------------------
     # Line helpers
     # ------------------------------------------------------------------
@@ -725,6 +800,56 @@ class GeometryEngine:
         """Store the constraint that Q is the reflection of P across line AB."""
         for eq in self.line_reflection_polys(P, A, B, Q):
             self.add_constraint(eq)
+
+    def add_isogonal_reflection(self, A: str, B: str, C: str, D: str, E: str) -> None:
+        """Store the constraint that AD and AE are isogonal with respect to angle BAC."""
+        poly = self.isogonal_reflection_poly(A, B, C, D, E)
+        self.add_constraint(poly)
+
+    def add_isogonal_conjugate(self, A: str, B: str, C: str, P: str, Q: str) -> None:
+        """Store the constraints that Q is the isogonal conjugate of P with respect to triangle ABC."""
+        for eq in self.isogonal_conjugate_polys(A, B, C, P, Q):
+            self.add_constraint(eq)
+
+    def isogonal_conjugate_point(self, A: str, B: str, C: str, P: str, Q: str) -> sp.Expr:
+        """
+        Construct the isogonal conjugate Q of point P with respect to triangle ABC by solving
+        the angle-bisector reflection equations at two vertices.
+        """
+        vertex_labels = {A, B, C}
+        if len(vertex_labels) != 3:
+            raise GeometryError("Isogonal conjugate requires three distinct triangle vertices (A, B, C).")
+
+        for label in (A, B, C, P):
+            self.ensure_point(label)
+        self.add_point(Q)
+
+        if P in (A, B, C):
+            self._set_point_assignment(Q, self.z(P), self.zb(P))
+            return self.z(Q)
+
+        eq_A, eq_B, eq_C = self.isogonal_conjugate_polys(A, B, C, P, Q, raw=True)
+
+        zQ, zbQ = self.z_symbol(Q), self.zb_symbol(Q)
+        processed_eqs = [self._apply_all(eq_A), self._apply_all(eq_B)]
+        solutions = sp.solve(processed_eqs, (zQ, zbQ), dict=True)
+        if not solutions:
+            raise GeometryError("Isogonal conjugate construction failed: system has no solution.")
+
+        eq_C_processed = self._apply_all(eq_C)
+        chosen: Optional[Dict[sp.Symbol, sp.Expr]] = None
+        for candidate in solutions:
+            check = eq_C_processed.subs({zQ: candidate[zQ], zbQ: candidate[zbQ]})
+            if sp.simplify(check) == 0:
+                chosen = candidate
+                break
+
+        if chosen is None:
+            chosen = solutions[0]
+
+        self._set_point_assignment(Q, chosen[zQ], chosen[zbQ])
+
+        return self.z(Q)
 
     def circumcenter(self, A: str, B: str, C: str, U: str) -> sp.Expr:
         """
@@ -1649,6 +1774,14 @@ class GeometryEngine:
             if len(args) != 4:
                 raise GeometryError("Line reflection expects four point labels (P, A, B, Q).")
             return list(self.line_reflection_polys(*args))
+        if normalized in {"isogonal_reflection", "angle_bisector_reflection"}:
+            if len(args) != 5:
+                raise GeometryError("Isogonal reflection expects five point labels (A, B, C, D, E).")
+            return [self.isogonal_reflection_poly(*args)]
+        if normalized in {"isogonal_conjugate", "isogonal_conj", "add_isogonal_conjugate"}:
+            if len(args) != 5:
+                raise GeometryError("Isogonal conjugate expects five point labels (A, B, C, P, Q).")
+            return list(self.isogonal_conjugate_polys(*args))
         if normalized in {
             "triangle_similarity",
             "triangle_similarity_directed",

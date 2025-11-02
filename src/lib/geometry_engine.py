@@ -92,6 +92,8 @@ class GeometryEngine:
         self.circles: Dict[str, Circle] = {}
         self.distinct_pairs: Set[FrozenSet[str]] = set()
         self._main_unit_triangle: Optional[UnitTriangleConfig] = None
+        self._latex_symbol_names: Dict[sp.Symbol, str] = {}
+        self._text_symbol_replacements: Dict[sp.Symbol, sp.Expr] = {}
 
         # Declare origin O with fixed coordinates at 0
         self.add_point("O")
@@ -115,7 +117,16 @@ class GeometryEngine:
         z_symbol = sp.Symbol(f"z_{name}")
         zb_symbol = sp.Symbol(f"zb_{name}")
         self.points[name] = PointRecord(z=z_symbol, zb=zb_symbol)
+        self._register_display_symbols(name, z_symbol, zb_symbol)
 
+    def _register_display_symbols(self, name: str, z_symbol: sp.Symbol, zb_symbol: sp.Symbol) -> None:
+        """Cache pretty-print mappings for the point's coordinate symbols."""
+        base_symbol = sp.Symbol(name)
+        latex_label = sp.latex(base_symbol)
+        self._latex_symbol_names[z_symbol] = latex_label
+        self._latex_symbol_names[zb_symbol] = rf"\overline{{{latex_label}}}"
+        self._text_symbol_replacements[z_symbol] = base_symbol
+        self._text_symbol_replacements[zb_symbol] = sp.conjugate(base_symbol)
 
     def ensure_point(self, name: str) -> None:
         """Ensure a point is registered; raise an informative error otherwise."""
@@ -306,6 +317,64 @@ class GeometryEngine:
         poly = w_conj * (zA - zB) * (zbC - zbB) - w * (zbA - zbB) * (zC - zB)
         return poly if raw else sp.expand(poly)
 
+    # ------------------------------------------------------------------
+    # Rational invariants
+    # ------------------------------------------------------------------
+    def cross_ratio(self, A: str, B: str, C: str, D: str, *, apply_subs: bool = True) -> sp.Expr:
+        """
+        Return the cross ratio (A, B; C, D) given by ((z_A - z_C)(z_B - z_D)) / ((z_A - z_D)(z_B - z_C)).
+
+        Parameters
+        ----------
+        apply_subs:
+            When True, apply any known substitutions (assignments, learned rules) to the result.
+        """
+        zA, zB, zC, zD = (
+            self.z_symbol(A),
+            self.z_symbol(B),
+            self.z_symbol(C),
+            self.z_symbol(D),
+        )
+        expr = sp.simplify((zA - zC) * (zB - zD) / ((zA - zD) * (zB - zC)))
+        return self._apply_all(expr) if apply_subs else expr
+
+    def angle_bisector_either_poly(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        *,
+        raw: bool = False,
+    ) -> sp.Expr:
+        """
+        Return a polynomial ensuring D lies on either bisector of angle BAC.
+
+        Derived from the identity (z_D - z_A)^2 / conj((z_D - z_A)^2) =
+        (z_B - z_A)(z_C - z_A) / conj((z_B - z_A)(z_C - z_A)).
+        """
+        zA, zB, zC, zD = (
+            self.z_symbol(A),
+            self.z_symbol(B),
+            self.z_symbol(C),
+            self.z_symbol(D),
+        )
+        zbA, zbB, zbC, zbD = (
+            self.zb_symbol(A),
+            self.zb_symbol(B),
+            self.zb_symbol(C),
+            self.zb_symbol(D),
+        )
+        lhs = (zD - zA) ** 2 * (zbB - zbA) * (zbC - zbA)
+        rhs = (zbD - zbA) ** 2 * (zB - zA) * (zC - zA)
+        poly = sp.simplify(lhs - rhs)
+        return poly if raw else sp.expand(poly)
+
+    def add_angle_bisector_either(self, A: str, B: str, C: str, D: str) -> None:
+        """Store the constraint that D lies on either angle bisector of BAC."""
+        poly = self.angle_bisector_either_poly(A, B, C, D)
+        self.add_constraint(poly)
+
     def triangle_similarity_polys(
         self,
         A: str,
@@ -426,6 +495,24 @@ class GeometryEngine:
             eq_zb = sp.expand(eq_zb)
         return eq_z, eq_zb
 
+    def centroid_polys(self, A: str, B: str, C: str, G: str, *, raw: bool = False) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Polynomials enforcing that G is the centroid of triangle ABC.
+        """
+        for label in (A, B, C, G):
+            self.ensure_point(label)
+
+        zA, zB, zC, zG = self.z_symbol(A), self.z_symbol(B), self.z_symbol(C), self.z_symbol(G)
+        zbA, zbB, zbC, zbG = self.zb_symbol(A), self.zb_symbol(B), self.zb_symbol(C), self.zb_symbol(G)
+
+        eq_z = zA + zB + zC - 3 * zG
+        eq_zb = zbA + zbB + zbC - 3 * zbG
+
+        if not raw:
+            eq_z = sp.expand(eq_z)
+            eq_zb = sp.expand(eq_zb)
+        return eq_z, eq_zb
+
     def point_reflection_polys(self, P: str, O: str, Q: str, *, raw: bool = False) -> Tuple[sp.Expr, sp.Expr]:
         """
         Polynomials enforcing that Q is the reflection of P across point O.
@@ -457,6 +544,32 @@ class GeometryEngine:
             collinear_midpoint = sp.expand(collinear_midpoint)
 
         return eq_perp, eq_mid_z, eq_mid_zb, collinear_midpoint
+
+    def projection_to_line_polys(
+        self,
+        P: str,
+        A: str,
+        B: str,
+        H: str,
+        *,
+        raw: bool = False,
+    ) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Polynomials enforcing that H is the orthogonal projection of P onto line AB.
+
+        The projection is modeled as the intersection of line AB with the perpendicular through P.
+        """
+        if A == B:
+            raise GeometryError("Projection requires two distinct points to define line AB.")
+
+        eq_perp = self.perpendicular_poly(A, B, P, H, raw=True)
+        eq_collinear = self.collinear_poly(H, A, B, raw=True)
+
+        if not raw:
+            eq_perp = sp.expand(eq_perp)
+            eq_collinear = sp.expand(eq_collinear)
+
+        return eq_perp, eq_collinear
 
     def isogonal_reflection_poly(
         self,
@@ -790,6 +903,13 @@ class GeometryEngine:
         self.add_constraint(eq_z)
         self.add_constraint(eq_zb)
 
+    def add_centroid_constraint(self, A: str, B: str, C: str, G: str) -> None:
+        """Store the constraints declaring G as the centroid of triangle ABC."""
+        self.add_point(G)
+        eq_z, eq_zb = self.centroid_polys(A, B, C, G)
+        self.add_constraint(eq_z)
+        self.add_constraint(eq_zb)
+
     def add_point_reflection(self, P: str, O: str, Q: str) -> None:
         """Store the constraint that Q is the reflection of P across point O."""
         eq_z, eq_zb = self.point_reflection_polys(P, O, Q)
@@ -799,6 +919,11 @@ class GeometryEngine:
     def add_line_reflection(self, P: str, A: str, B: str, Q: str) -> None:
         """Store the constraint that Q is the reflection of P across line AB."""
         for eq in self.line_reflection_polys(P, A, B, Q):
+            self.add_constraint(eq)
+
+    def add_projection_to_line(self, P: str, A: str, B: str, H: str) -> None:
+        """Store the constraints that H is the orthogonal projection of P onto line AB."""
+        for eq in self.projection_to_line_polys(P, A, B, H):
             self.add_constraint(eq)
 
     def add_isogonal_reflection(self, A: str, B: str, C: str, D: str, E: str) -> None:
@@ -1155,6 +1280,30 @@ class GeometryEngine:
         self._set_point_assignment(X, solution[zX], solution[zbX])
         return self.z(X), self.zb(X)
 
+    def project_point_to_line(self, P: str, A: str, B: str, H: str) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Construct the orthogonal projection H of point P onto line AB.
+        """
+        if A == B:
+            raise GeometryError("Projection requires two distinct points to define line AB.")
+
+        for label in (P, A, B):
+            self.ensure_point(label)
+
+        self.add_point(H)
+        if self._has_assignment(H):
+            return self.z(H), self.zb(H)
+
+        zH, zbH = self.z_symbol(H), self.zb_symbol(H)
+        eq_perp, eq_collinear = self.projection_to_line_polys(P, A, B, H, raw=True)
+        candidates = self._solve_candidate_points(zH, zbH, [eq_perp, eq_collinear])
+        if not candidates:
+            raise GeometryError(f"Projection failed: line '{A}{B}' and point '{P}' do not determine a unique foot.")
+
+        z_value, zb_value = candidates[0]
+        self._set_point_assignment(H, z_value, zb_value)
+        return self.z(H), self.zb(H)
+
     def line_circle_intersection(
         self,
         line_point1: str,
@@ -1447,6 +1596,63 @@ class GeometryEngine:
         zb_symbol = self.zb_symbol(name)
         self.point_assignments[z_symbol] = z_candidate
         self.point_assignments[zb_symbol] = zb_candidate
+
+    def _fermat_point_components(self, A: str, B: str, C: str, w: sp.Expr) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Return (z, zb) expressions for the Fermat point of triangle ABC associated with root `w`.
+        """
+        for label in (A, B, C):
+            self.ensure_point(label)
+
+        zA, zB, zC = self.z(A), self.z(B), self.z(C)
+        zbA, zbB, zbC = self.zb(A), self.zb(B), self.zb(C)
+
+        conj_bc = sp.simplify(zbB - zbC)
+        conj_ca = sp.simplify(zbC - zbA)
+        conj_ab = sp.simplify(zbA - zbB)
+
+        w_sq = sp.simplify(w ** 2)
+
+        numerator = zA * conj_bc + w * zB * conj_ca + w_sq * zC * conj_ab
+        denominator = sp.simplify(conj_bc + w * conj_ca + w_sq * conj_ab)
+        if denominator == 0:
+            raise GeometryError("Fermat point construction is undefined: denominator vanished.")
+
+        diff_bc = sp.simplify(zB - zC)
+        diff_ca = sp.simplify(zC - zA)
+        diff_ab = sp.simplify(zA - zB)
+
+        w_conj = sp.conjugate(w)
+        w_conj_sq = sp.conjugate(w_sq)
+
+        numerator_conj = zbA * diff_bc + w_conj * zbB * diff_ca + w_conj_sq * zbC * diff_ab
+        denominator_conj = sp.simplify(diff_bc + w_conj * diff_ca + w_conj_sq * diff_ab)
+        if denominator_conj == 0:
+            raise GeometryError("Fermat point construction is undefined: conjugate denominator vanished.")
+
+        z_expr = sp.simplify(numerator / denominator)
+        zb_expr = sp.simplify(numerator_conj / denominator_conj)
+        return z_expr, zb_expr
+
+    def add_fermat_points(self, A: str, B: str, C: str, F1: str, F2: str) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Assign the two Fermat points of triangle ABC to the provided labels.
+        """
+        if len({A, B, C}) != 3:
+            raise GeometryError("Fermat point construction expects three distinct vertices.")
+        if F1 == F2:
+            raise GeometryError("Fermat point labels must be distinct.")
+
+        roots = (sp.exp(2 * sp.pi * sp.I / 3), sp.exp(4 * sp.pi * sp.I / 3))
+        outputs: List[sp.Expr] = []
+        for label, root in zip((F1, F2), roots):
+            if not isinstance(label, str):
+                raise GeometryError("Fermat point labels must be strings.")
+            self.add_point(label)
+            z_expr, zb_expr = self._fermat_point_components(A, B, C, root)
+            self._set_point_assignment(label, z_expr, zb_expr)
+            outputs.append(self.z(label))
+        return outputs[0], outputs[1]
 
     def _unique_internal_name(self, base: str) -> str:
         """Return a point name unlikely to clash with user-provided labels."""
@@ -1755,6 +1961,12 @@ class GeometryEngine:
             if angle is None:
                 raise GeometryError("Angle constraint requires an 'angle' expression.")
             return [self.angle_value_poly(*args, angle, raw=False)]
+        if normalized in {"angle_bisector_either", "angle_bisector_any"}:
+            if len(args) != 4:
+                raise GeometryError(
+                    "Angle bisector (either) constraint expects four point labels (A, B, C, D)."
+                )
+            return [self.angle_bisector_either_poly(*args)]
         if normalized == "circumcenter":
             if len(args) != 4:
                 raise GeometryError("Circumcenter constraint expects four point labels (A, B, C, U).")
@@ -1764,6 +1976,11 @@ class GeometryEngine:
             if len(args) != 3:
                 raise GeometryError("Midpoint constraint expects three point labels (P, Q, M).")
             eq_z, eq_zb = self.midpoint_polys(*args)
+            return [eq_z, eq_zb]
+        if normalized in {"centroid"}:
+            if len(args) != 4:
+                raise GeometryError("Centroid constraint expects four point labels (A, B, C, G).")
+            eq_z, eq_zb = self.centroid_polys(*args)
             return [eq_z, eq_zb]
         if normalized in {"point_reflection", "reflection_point", "reflect_point"}:
             if len(args) != 3:
@@ -1844,24 +2061,60 @@ class GeometryEngine:
         return self.constraint_conjugate_free("perpendicular", [A, B, C, D])[0]
 
     # ------------------------------------------------------------------
+    # Display helpers
+    # ------------------------------------------------------------------
+    def format_symbol(self, symbol: sp.Symbol, *, style: str = "latex") -> str:
+        """
+        Return a string representation of a stored symbol with point labels instead of z_/zb_.
+        """
+        if style == "latex":
+            return self._latex_symbol_names.get(symbol, sp.latex(symbol))
+        if style == "text":
+            if symbol in self._text_symbol_replacements:
+                return sp.sstr(self._text_symbol_replacements[symbol])
+            return sp.sstr(symbol)
+        raise ValueError(f"Unsupported display style '{style}'.")
+
+    def format_expr(self, expr: sp.Expr, *, style: str = "latex") -> str:
+        """
+        Render an expression using point labels for coordinates.
+        """
+        simplified = sp.simplify(expr)
+        if style == "latex":
+            return sp.latex(simplified, symbol_names=self._latex_symbol_names)
+        if style == "text":
+            replaced = simplified.xreplace(self._text_symbol_replacements)
+            return sp.sstr(replaced)
+        raise ValueError(f"Unsupported display style '{style}'.")
+
+    def display_learned_rules(self, *, style: str = "latex") -> Dict[str, str]:
+        """
+        Return learned conjugate substitutions with formatted symbols/expressions.
+        """
+        return {
+            self.format_symbol(symbol, style=style): self.format_expr(expr, style=style)
+            for symbol, expr in self.learned_subs.items()
+        }
+
+    # ------------------------------------------------------------------
     # Introspection utilities
     # ------------------------------------------------------------------
     def learned_rules(self) -> Dict[str, sp.Expr]:
         """Return learned conjugate substitutions as a plain dictionary."""
         return {str(symbol): sp.simplify(expr) for symbol, expr in self.learned_subs.items()}
 
-    def point_summary(self, names: Optional[Sequence[str]] = None) -> Dict[str, sp.Expr]:
-        """Return simplified z-coordinate expressions for selected points."""
+    def point_summary(self, names: Optional[Sequence[str]] = None, *, style: str = "latex") -> Dict[str, str]:
+        """Return simplified coordinate expressions for selected points."""
         if names is None:
             names = sorted(self.points.keys())
-        summary: Dict[str, sp.Expr] = {}
+        summary: Dict[str, str] = {}
         for name in names:
-            summary[name] = sp.simplify(self.z(name))
+            summary[name] = self.format_expr(self.z(name), style=style)
         return summary
 
-    def constraint_strings(self) -> List[str]:
+    def constraint_strings(self, *, style: str = "text") -> List[str]:
         """Return stored constraints in their recorded polynomial form."""
-        return [str(sp.expand(constraint)) for constraint in self.constraints]
+        return [self.format_expr(sp.expand(constraint), style=style) for constraint in self.constraints]
 
 
 __all__ = [

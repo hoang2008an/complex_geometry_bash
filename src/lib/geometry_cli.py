@@ -28,18 +28,21 @@ import sympy as sp
 
 from geometry_engine import GeometryEngine, GeometryError
 
+DISPLAY_STYLE = "latex"
 
-def _print_point_summary(summary: Dict[str, sp.Expr]) -> None:
+
+def _print_point_summary(summary: Dict[str, str]) -> None:
     for name in sorted(summary.keys()):
-        print(f"{name}: {sp.simplify(summary[name])}")
+        value = summary[name]
+        print(f"{name}: {value}")
 
 
-def _print_learned_rules(rules: Dict[str, sp.Expr]) -> None:
+def _print_learned_rules(rules: Dict[str, str]) -> None:
     if not rules:
         print("No learned conjugate rules yet.")
         return
     for symbol, expr in sorted(rules.items()):
-        print(f"{symbol} -> {sp.simplify(expr)}")
+        print(f"{symbol} -> {expr}")
 
 
 def _print_constraints(constraints: Iterable[str]) -> None:
@@ -47,12 +50,12 @@ def _print_constraints(constraints: Iterable[str]) -> None:
         print(f"[{idx}] {constraint} = 0")
 
 
-def _print_constraint_results(results: Sequence[Tuple[sp.Expr, sp.Expr]]) -> None:
+def _print_constraint_results(results: Sequence[Tuple[str, str]]) -> None:
     multi = len(results) > 1
     for idx, (numerator, denominator) in enumerate(results, start=1):
         prefix = f"[{idx}] " if multi else ""
-        print(f"{prefix}N = {sp.expand(numerator)}")
-        print(f"{prefix}D = {sp.expand(denominator)}")
+        print(f"{prefix}N = {numerator}")
+        print(f"{prefix}D = {denominator}")
 
 
 def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
@@ -84,10 +87,20 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.add_circumcenter(*step["args"])
             elif op == "add_midpoint":
                 engine.add_midpoint(*step["args"])
+            elif op in {"add_centroid_constraint", "add_centroid", "centroid_constraint"}:
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError("add_centroid_constraint expects args [A, B, C, G].")
+                engine.add_centroid_constraint(*args)
             elif op == "add_point_reflection":
                 engine.add_point_reflection(*step["args"])
             elif op == "add_line_reflection":
                 engine.add_line_reflection(*step["args"])
+            elif op in {"add_projection_to_line", "projection_constraint"}:
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError("add_projection_to_line expects args [P, A, B, H].")
+                engine.add_projection_to_line(*args)
             elif op in {"add_isogonal_reflection", "isogonal_reflection", "angle_bisector_reflection"}:
                 args = step.get("args", [])
                 if len(args) != 5:
@@ -125,6 +138,15 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 directed_flag = step.get("directed")
                 engine.add_triangle_congruence(*args, directed=True if directed_flag is None else bool(directed_flag))
             elif op in {
+                "add_angle_bisector_either",
+                "angle_bisector_either",
+                "angle_bisector_any",
+            }:
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError("add_angle_bisector_either expects args [A, B, C, D].")
+                engine.add_angle_bisector_either(*args)
+            elif op in {
                 "add_triangle_congruence_undirected",
                 "triangle_congruence_undirected",
                 "triangle_equal_undirected",
@@ -137,11 +159,21 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.orthocenter_via_altitudes(*step["args"])
             elif op == "intersection":
                 engine.intersection_of_lines(*step["args"])
+            elif op in {"project_point_to_line", "point_projection"}:
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError("project_point_to_line expects args [P, A, B, H].")
+                engine.project_point_to_line(*args)
             elif op == "circumcenter":
                 args = step.get("args", [])
                 if len(args) != 4:
                     raise GeometryError("circumcenter expects arguments [A, B, C, U].")
                 engine.circumcenter(*args)
+            elif op in {"add_fermat_points", "fermat_points"}:
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise GeometryError("add_fermat_points expects args [A, B, C, F1, F2].")
+                engine.add_fermat_points(*args)
             elif op in {"set_unit_triangle", "set_main_unit_triangle"}:
                 raw_args = step.get("args")
                 triangle = step.get("triangle")
@@ -430,10 +462,10 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                     raise GeometryError("squared_distance expects exactly two point labels.")
                 label = step.get("label") or f"|{args[0]}{args[1]}|^2"
                 value = engine.squared_distance(*args)
-                print(f"{label}: {sp.simplify(value)}")
+                print(f"{label}: {engine.format_expr(value, style=DISPLAY_STYLE)}")
             elif op == "print_points":
                 names = step.get("names")
-                summary = engine.point_summary(names)
+                summary = engine.point_summary(names, style=DISPLAY_STYLE)
                 _print_point_summary(summary)
             elif op == "constraint_check":
                 constraint = step["constraint"]
@@ -448,11 +480,18 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                     angle=angle_expr,
                     directed=directed_flag,
                 )
-                _print_constraint_results(results)
+                formatted_results = [
+                    (
+                        engine.format_expr(sp.expand(numerator), style=DISPLAY_STYLE),
+                        engine.format_expr(sp.expand(denominator), style=DISPLAY_STYLE),
+                    )
+                    for numerator, denominator in results
+                ]
+                _print_constraint_results(formatted_results)
             elif op == "learned_rules":
-                _print_learned_rules(engine.learned_rules())
+                _print_learned_rules(engine.display_learned_rules(style=DISPLAY_STYLE))
             elif op == "print_constraints":
-                _print_constraints(engine.constraint_strings())
+                _print_constraints(engine.constraint_strings(style=DISPLAY_STYLE))
             else:
                 raise GeometryError(f"Unsupported op '{op}' on step {index}.")
         except KeyError as exc:
@@ -554,23 +593,25 @@ def main(argv: Sequence[str] | None = None) -> None:
             for name in {args.A, args.B, args.C, args.D}:
                 engine.add_point(name)
             poly = engine.concyclic_poly(args.A, args.B, args.C, args.D, raw=args.raw)
-            print(sp.expand(poly) if not args.raw else poly)
+            expr = poly if args.raw else sp.expand(poly)
+            print(engine.format_expr(expr, style=DISPLAY_STYLE))
         elif args.poly_command == "circumcenter":
             for name in {args.A, args.B, args.C, args.U}:
                 engine.add_point(name)
             eq1, eq2 = engine.circumcenter_polys(args.A, args.B, args.C, args.U, raw=args.raw)
             if args.raw:
-                print(f"eq1: {eq1}")
-                print(f"eq2: {eq2}")
+                print(f"eq1: {engine.format_expr(eq1, style=DISPLAY_STYLE)}")
+                print(f"eq2: {engine.format_expr(eq2, style=DISPLAY_STYLE)}")
             else:
-                print(f"eq1: {sp.expand(eq1)}")
-                print(f"eq2: {sp.expand(eq2)}")
+                print(f"eq1: {engine.format_expr(sp.expand(eq1), style=DISPLAY_STYLE)}")
+                print(f"eq2: {engine.format_expr(sp.expand(eq2), style=DISPLAY_STYLE)}")
         elif args.poly_command == "angle":
             for name in {args.A, args.B, args.C}:
                 engine.add_point(name)
             angle_expr = sp.sympify(args.angle)
             poly = engine.angle_value_poly(args.A, args.B, args.C, angle_expr, raw=args.raw)
-            print(poly if args.raw else sp.expand(poly))
+            expr = poly if args.raw else sp.expand(poly)
+            print(engine.format_expr(expr, style=DISPLAY_STYLE))
         else:
             parser.error("Unsupported poly command.")
     else:

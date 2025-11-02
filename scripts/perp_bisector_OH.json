@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "T","unit_circle": true},
+    {"op": "add_point", "name": "E", "unit_circle": true},
+    {"op": "add_point", "name": "F", "unit_circle": true},
+
+
+    {"op": "line_circle_intersection", "args": ["A", "F", "T", "A", "B"], "avoid": ["A"]},
+    {"op": "line_circle_intersection", "args": ["A", "E", "T", "A", "C"], "avoid": ["A"]},
+
+
+    {"op": "orthocenter", "args": ["A", "B", "C", "H"]},
+    {"op": "midpoint", "args": ["T", "H", "M_OH"]},
+    {"op": "reflect_point_over_line", "args": ["T", "E", "F", "O_ref"]},
+    {"op": "circumcenter", "args": ["O_ref", "E", "F", "U_OEF"]},
+
+    {"op": "constraint_check", "constraint": "perpendicular", "args": ["M_OH", "U_OEF", "T", "H"]},
+
+    {"op": "print_points", "names": ["A", "B", "C", "E", "F", "T", "H", "O_ref", "U_OEF", "M_OH"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

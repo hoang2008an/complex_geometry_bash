@@ -29,6 +29,7 @@ The CLI consumes JSON scripts whose `steps` array contains operations with optio
 | `add_angle_value` | `[A, B, C]`, `angle` | Fixes ∠ABC to the provided SymPy expression. |
 | `add_circumcenter` | `[A, B, C, U]` | Enforces U as the circumcenter of triangle ABC. |
 | `add_midpoint` | `[P, Q, M]` | Constrains M to be the midpoint of segment PQ. |
+| `add_centroid_constraint` | `[A, B, C, G]` | Stores equations enforcing G as the centroid of triangle ABC. |
 | `add_point_reflection` | `[P, O, Q]` | Adds Q as the reflection of P across point O. |
 | `add_line_reflection` | `[P, A, B, Q]` | Adds Q as the reflection of P across line AB. |
 | `orthocenter` | `[A, B, C, H]` | Constructs the altitudes-based orthocenter. |

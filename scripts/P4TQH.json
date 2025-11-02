@@ -1,0 +1,25 @@
+{
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+
+    {"op": "lemoine_point", "args": ["A", "B", "C", "L"]},
+    {"op": "add_fermat_points", "args": ["A", "B", "C", "S", "S_alt"]},
+    {"op": "add_point", "name": "G"},
+    {"op": "add_point", "name": "P"},
+
+
+    {"op": "project_point_to_line", "args": ["P", "B", "C", "D"]},
+    {"op": "project_point_to_line", "args": ["P", "C", "A", "E"]},
+    {"op": "project_point_to_line", "args": ["P", "A", "B", "F"]},
+
+    {"op": "centroid", "args": ["D", "E", "F", "G"]},
+
+    {"op":"add_collinear", "args": ["L", "G", "P"]},
+    {"op":"constraint_check","constraint":"angle_bisector_either","args":["O","L","S","G"]},
+    {"op": "print_points", "names": ["A", "B", "C", "O", "L", "S", "P", "D", "E", "F", "G"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

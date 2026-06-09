@@ -174,6 +174,24 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 if len(args) != 5:
                     raise GeometryError("add_fermat_points expects args [A, B, C, F1, F2].")
                 engine.add_fermat_points(*args)
+            elif op in {"humpty_point", "humpy_point", "humpty"}:
+                args = step.get("args", [])
+                if len(args) == 4:
+                    engine.humpty_point(*args)
+                elif len(args) == 5:
+                    A, B, C, which, H = args
+                    engine.humpty_point(A, B, C, H, which=which)
+                else:
+                    raise GeometryError("humpty_point expects args [A, B, C, H] or [A, B, C, which, H].")
+            elif op in {"dumpty_point", "dumpty"}:
+                args = step.get("args", [])
+                if len(args) == 4:
+                    engine.dumpty_point(*args)
+                elif len(args) == 5:
+                    A, B, C, which, D = args
+                    engine.dumpty_point(A, B, C, D, which=which)
+                else:
+                    raise GeometryError("dumpty_point expects args [A, B, C, D] or [A, B, C, which, D].")
             elif op in {"set_unit_triangle", "set_main_unit_triangle"}:
                 raw_args = step.get("args")
                 triangle = step.get("triangle")
@@ -230,14 +248,14 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                     raise GeometryError("line_from_points expects 'name' and args [P, Q].")
                 if name in engine.lines:
                     raise GeometryError(f"Line '{name}' is already defined.")
-                engine.lines[name] = engine.line_through_points(*args)
+                engine.register_line(name, engine.line_through_points(*args))
             elif op in {"line_init", "line_new"}:
                 name = step.get("name")
                 if not isinstance(name, str):
                     raise GeometryError("line_init expects a 'name'.")
                 if name in engine.lines:
                     raise GeometryError(f"Line '{name}' is already defined.")
-                engine.lines[name] = engine.symbolic_line(name)
+                engine.register_line(name, engine.symbolic_line(name))
             elif op in {"line_from_coefficients", "line_define"}:
                 name = step.get("name")
                 alpha = step.get("alpha")
@@ -250,7 +268,7 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 if name in engine.lines:
                     raise GeometryError(f"Line '{name}' is already defined.")
                 line = engine.line_from_coefficients(sp.sympify(alpha), sp.sympify(beta), sp.sympify(gamma))
-                engine.lines[name] = line
+                engine.register_line(name, line)
             elif op == "point_on_line":
                 line_name = step.get("line")
                 point = step.get("point")
@@ -482,8 +500,8 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 )
                 formatted_results = [
                     (
-                        engine.format_expr(sp.expand(numerator), style=DISPLAY_STYLE),
-                        engine.format_expr(sp.expand(denominator), style=DISPLAY_STYLE),
+                        engine.format_expr(numerator, style=DISPLAY_STYLE),
+                        engine.format_expr(denominator, style=DISPLAY_STYLE),
                     )
                     for numerator, denominator in results
                 ]

@@ -17,7 +17,7 @@
     {"op": "centroid", "args": ["D", "E", "F", "G"]},
 
     {"op":"add_collinear", "args": ["L", "G", "P"]},
-    {"op":"constraint_check","constraint":"angle_bisector_either","args":["O","L","S","G"]},
+    {"op":"constraint_check","constraint":"angle_bisector_either","args":["L","O","S","G"]},
     {"op": "print_points", "names": ["A", "B", "C", "O", "L", "S", "P", "D", "E", "F", "G"]},
     {"op": "learned_rules"},
     {"op": "print_constraints"}

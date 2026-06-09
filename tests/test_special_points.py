@@ -90,6 +90,40 @@ def test_fermat_point_angles() -> None:
     assert sp.simplify(engine._apply_all(poly_f2_one_twenty)) == 0
 
 
+def test_humpty_point_is_projection_of_orthocenter_on_A_median() -> None:
+    engine = GeometryEngine()
+    _assign_value(engine, "A", 2 + 0j)
+    _assign_value(engine, "B", -1 + 3 * sp.I)
+    _assign_value(engine, "C", 1 + 4 * sp.I)
+
+    engine.humpty_point("A", "B", "C", "H_A")
+    engine.orthocenter_via_altitudes("A", "B", "C", "H")
+    engine.midpoint("B", "C", "M_A")
+
+    collinear_poly = engine.collinear_poly("H_A", "A", "M_A")
+    perpendicular_poly = engine.perpendicular_poly("H", "H_A", "A", "M_A")
+
+    assert sp.simplify(engine._apply_all(collinear_poly)) == 0
+    assert sp.simplify(engine._apply_all(perpendicular_poly)) == 0
+
+
+def test_dumpty_point_is_projection_of_circumcenter_on_A_symmedian() -> None:
+    engine = GeometryEngine()
+    _assign_value(engine, "A", 2 + 0j)
+    _assign_value(engine, "B", -1 + 3 * sp.I)
+    _assign_value(engine, "C", 1 + 4 * sp.I)
+
+    engine.dumpty_point("A", "B", "C", "D_A")
+    engine.circumcenter("A", "B", "C", "O_c")
+    engine.lemoine_point("A", "B", "C", "K", circumcenter_name="O_c")
+
+    collinear_poly = engine.collinear_poly("D_A", "A", "K")
+    perpendicular_poly = engine.perpendicular_poly("O_c", "D_A", "A", "K")
+
+    assert sp.simplify(engine._apply_all(collinear_poly)) == 0
+    assert sp.simplify(engine._apply_all(perpendicular_poly)) == 0
+
+
 def test_angle_bisector_either_poly() -> None:
     engine = GeometryEngine()
     _assign_value(engine, "A", 0)

@@ -32,6 +32,18 @@ class SageUnitTriangleConfig:
     roots: Dict[str, str]
 
 
+@dataclass(frozen=True)
+class SageLine:
+    alpha: Any
+    beta: Any
+    gamma: Any
+    context: Tuple[str, ...] = ()
+    point_on: Optional[str] = None
+
+    def evaluate(self, z_expr: Any, zb_expr: Any) -> Any:
+        return self.alpha * z_expr + self.beta * zb_expr + self.gamma
+
+
 class SageGeometryEngine:
     """
     Rational-function complex geometry engine backed by Sage fraction fields.
@@ -59,6 +71,7 @@ class SageGeometryEngine:
         self.point_assignments: Dict[str, Any] = {}
         self.learned_subs: Dict[str, Any] = {}
         self.unit_circle_points: set[str] = set()
+        self.lines: Dict[str, SageLine] = {}
         self._main_unit_triangle: Optional[SageUnitTriangleConfig] = None
         self._field = None
         self._poly_ring = None
@@ -395,6 +408,124 @@ class SageGeometryEngine:
             self.add_constraint(eq)
 
     # ------------------------------------------------------------------
+    # Line objects
+    # ------------------------------------------------------------------
+    def line_from_coefficients(
+        self,
+        alpha: Any,
+        beta: Any,
+        gamma: Any,
+        *,
+        context: Optional[Sequence[str]] = None,
+        point_on: Optional[str] = None,
+    ) -> SageLine:
+        return SageLine(
+            alpha=self.expr(alpha),
+            beta=self.expr(beta),
+            gamma=self.expr(gamma),
+            context=tuple(context or ()),
+            point_on=point_on,
+        )
+
+    def symbolic_line(self, name: str) -> SageLine:
+        return SageLine(alpha=None, beta=None, gamma=None, context=(name,))
+
+    def register_line(self, name: str, line: SageLine) -> SageLine:
+        if name in self.lines:
+            raise SageGeometryError(f"Line '{name}' is already defined.")
+        self.lines[name] = line
+        return line
+
+    def get_line(self, name: str) -> SageLine:
+        try:
+            return self.lines[name]
+        except KeyError as exc:
+            raise SageGeometryError(f"Line '{name}' is not defined.") from exc
+
+    def _coerce_line(self, line: SageLine | str) -> SageLine:
+        if isinstance(line, SageLine):
+            return line
+        if isinstance(line, str):
+            return self.get_line(line)
+        raise SageGeometryError("Expected a line label or line object.")
+
+    def line_through_points(self, P: str, Q: str) -> SageLine:
+        self.ensure_point(P)
+        self.ensure_point(Q)
+        if P == Q:
+            raise SageGeometryError("Line requires two distinct points.")
+        zP, zQ = self.z_symbol(P), self.z_symbol(Q)
+        zbP, zbQ = self.zb_symbol(P), self.zb_symbol(Q)
+        alpha = zbQ - zbP
+        beta = -(zQ - zP)
+        gamma = (zQ - zP) * zbP - (zbQ - zbP) * zP
+        return self.line_from_coefficients(alpha, beta, gamma, context=(P, Q))
+
+    def add_point_on_line(self, line: SageLine | str, point: str) -> None:
+        self.ensure_point(point)
+        line_obj = self._coerce_line(line)
+        if line_obj.alpha is None:
+            label = line_obj.context[0] if line_obj.context else None
+            updated = SageLine(None, None, None, line_obj.context, point_on=point)
+            if label and label in self.lines:
+                self.lines[label] = updated
+            return
+        self.add_constraint(line_obj.evaluate(self.z_symbol(point), self.zb_symbol(point)))
+
+    def add_perpendicular_lines(self, line1: SageLine | str, line2: SageLine | str) -> None:
+        line1_obj = self._coerce_line(line1)
+        line2_obj = self._coerce_line(line2)
+
+        materialized = self._materialize_perpendicular_line(line1_obj, line2_obj)
+        if materialized is not None:
+            return
+        materialized = self._materialize_perpendicular_line(line2_obj, line1_obj)
+        if materialized is not None:
+            return
+
+        if line1_obj.alpha is None or line2_obj.alpha is None:
+            raise SageGeometryError("Perpendicular symbolic lines need a known point and a concrete reference line.")
+        a1, b1 = self._line_normal_components(line1_obj)
+        a2, b2 = self._line_normal_components(line2_obj)
+        constraint = a1 * a2 + b1 * b2
+        if constraint != 0:
+            self.add_constraint(constraint)
+
+    def _materialize_perpendicular_line(self, free_line: SageLine, reference_line: SageLine) -> Optional[SageLine]:
+        if free_line.alpha is not None:
+            return None
+        if reference_line.alpha is None or free_line.point_on is None:
+            return None
+        label = free_line.context[0] if free_line.context else None
+        if label is None:
+            return None
+        point = free_line.point_on
+        alpha = -reference_line.alpha
+        beta = reference_line.beta
+        gamma = -alpha * self.z_symbol(point) - beta * self.zb_symbol(point)
+        concrete = self.line_from_coefficients(alpha, beta, gamma, context=free_line.context, point_on=point)
+        self.lines[label] = concrete
+        return concrete
+
+    def _line_normal_components(self, line: SageLine) -> Tuple[Any, Any]:
+        if line.alpha is None:
+            raise SageGeometryError("Symbolic line has not been determined yet.")
+        return line.alpha + line.beta, I * (line.beta - line.alpha)
+
+    def line_intersection(self, line1: SageLine | str, line2: SageLine | str, name: str) -> Tuple[Any, Any]:
+        self.add_point(name)
+        line1_obj = self._coerce_line(line1)
+        line2_obj = self._coerce_line(line2)
+        if line1_obj.alpha is None or line2_obj.alpha is None:
+            raise SageGeometryError("Line intersection requires concrete lines.")
+        z_var, zb_var = self.z_symbol(name), self.zb_symbol(name)
+        eq1 = self._apply_all(line1_obj.evaluate(z_var, zb_var))
+        eq2 = self._apply_all(line2_obj.evaluate(z_var, zb_var))
+        solution = self._solve_linear_point_system(eq1, eq2, z_var, zb_var, "Line intersection")
+        self._set_point_assignment(name, *solution)
+        return self.z(name), self.zb(name)
+
+    # ------------------------------------------------------------------
     # Constructions
     # ------------------------------------------------------------------
     def midpoint(self, P: str, Q: str, M: str) -> Any:
@@ -519,6 +650,78 @@ class SageGeometryEngine:
 
         raise SageGeometryError("Line-circle intersection has no candidate left after applying avoid.")
 
+    def circle_intersection(
+        self,
+        center1: str,
+        radius_point1: str,
+        center2: str,
+        radius_point2: str,
+        name: str,
+        *,
+        avoid: Optional[Sequence[str]] = None,
+    ) -> Tuple[Any, Any]:
+        """
+        Construct the second intersection of two circles when a known common
+        point is provided through ``avoid``.
+        """
+        self.add_point(name)
+        for label in (center1, radius_point1, center2, radius_point2):
+            self.ensure_point(label)
+
+        radius_sq1 = self.squared_distance(center1, radius_point1)
+        radius_sq2 = self.squared_distance(center2, radius_point2)
+        for known in avoid or ():
+            self.ensure_point(known)
+            on_first = self._is_zero(self.squared_distance(known, center1) - radius_sq1)
+            on_second = self._is_zero(self.squared_distance(known, center2) - radius_sq2)
+            if on_first and on_second:
+                return self._circle_intersection_from_known_point(
+                    center1,
+                    radius_sq1,
+                    center2,
+                    radius_sq2,
+                    known,
+                    name,
+                    avoid=avoid,
+                )
+        raise SageGeometryError(
+            "Sage mode supports circle_intersection only when avoid names a known common intersection."
+        )
+
+    def _circle_intersection_from_known_point(
+        self,
+        center1: str,
+        radius_sq1: Any,
+        center2: str,
+        radius_sq2: Any,
+        known: str,
+        name: str,
+        *,
+        avoid: Optional[Sequence[str]] = None,
+    ) -> Tuple[Any, Any]:
+        p_z, p_zb = self.z(known), self.zb(known)
+        z1, zb1 = self.z(center1), self.zb(center1)
+        z2, zb2 = self.z(center2), self.zb(center2)
+
+        alpha = zb2 - zb1
+        beta = z2 - z1
+        gamma = z1 * zb1 - z2 * zb2 - radius_sq1 + radius_sq2
+        dir_z = beta
+        dir_zb = -alpha
+        denominator = self.expr(dir_z * dir_zb)
+        if denominator == 0:
+            raise SageGeometryError("Circle intersection radical axis is degenerate.")
+        numerator = (p_z - z1) * dir_zb + (p_zb - zb1) * dir_z
+        t_other = self.expr(-numerator / denominator)
+        candidates = [(p_z, p_zb), (self.expr(p_z + t_other * dir_z), self.expr(p_zb + t_other * dir_zb))]
+
+        avoid_pairs = self._prepare_avoid_pairs(avoid)
+        for z_candidate, zb_candidate in candidates:
+            if not self._matches_any(z_candidate, zb_candidate, avoid_pairs):
+                self._set_point_assignment(name, z_candidate, zb_candidate, apply=False)
+                return self.z(name), self.zb(name)
+        raise SageGeometryError("Circle intersection has no candidate left after applying avoid.")
+
     def set_main_unit_triangle(
         self,
         A: str,
@@ -562,6 +765,27 @@ class SageGeometryEngine:
         yb = self.zb_symbol(config.roots["B"])
         zb = self.zb_symbol(config.roots["C"])
         self._set_point_assignment(name, -(x * y + x * z + y * z), -(xb * yb + xb * zb + yb * zb), apply=False)
+        return self.z(name)
+
+    def main_triangle_arc_midpoint(self, which: str, name: str, *, containing_vertex: bool = False) -> Any:
+        config = self._require_main_unit_triangle()
+        normalized = which.upper()
+        if normalized not in config.roots:
+            raise SageGeometryError(f"Arc midpoint '{which}' is not valid for the configured main triangle.")
+        if normalized == "A":
+            root1, root2 = config.roots["B"], config.roots["C"]
+        elif normalized == "B":
+            root1, root2 = config.roots["C"], config.roots["A"]
+        else:
+            root1, root2 = config.roots["A"], config.roots["B"]
+        sign = self.expr(1 if containing_vertex else -1)
+        self._set_point_assignment(
+            name,
+            sign * self.z_symbol(root1) * self.z_symbol(root2),
+            sign * self.zb_symbol(root1) * self.zb_symbol(root2),
+            apply=False,
+        )
+        self.add_unit_circle(name)
         return self.z(name)
 
     def isogonal_conjugate_point(self, A: str, B: str, C: str, P: str, Q: str) -> Any:

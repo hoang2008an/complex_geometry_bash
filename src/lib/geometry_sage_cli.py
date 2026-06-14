@@ -16,7 +16,6 @@ from geometry_sage_sr_engine import SageSRGeometryEngine, SageSRGeometryError
 
 
 UNSUPPORTED_BRANCH_OPS = {
-    "circle_intersection",
     "line_circle_object_intersection",
     "line_circle_object_intersections",
     "circle_object_intersection",
@@ -149,6 +148,42 @@ def run_steps(engine: Any, steps: Sequence[Dict[str, Any]]) -> None:
                 if not isinstance(name, str):
                     raise SageGeometryError("main_triangle_incenter requires a name.")
                 engine.main_triangle_incenter(name)
+            elif op in {"unit_triangle_arc_midpoint", "main_triangle_arc_midpoint"}:
+                name = step.get("name")
+                which = step.get("which")
+                if not isinstance(name, str) or not isinstance(which, str):
+                    raise SageGeometryError("unit_triangle_arc_midpoint requires 'name' and 'which' fields.")
+                containing = bool(step.get("containing_vertex") or step.get("containing"))
+                engine.main_triangle_arc_midpoint(which, name, containing_vertex=containing)
+            elif op in {"line_from_points", "line_through"}:
+                name = step.get("name")
+                args = step.get("args", [])
+                if not isinstance(name, str) or len(args) != 2:
+                    raise SageGeometryError("line_from_points expects 'name' and args [P, Q].")
+                engine.register_line(name, engine.line_through_points(*args))
+            elif op in {"line_init", "line_new"}:
+                name = step.get("name")
+                if not isinstance(name, str):
+                    raise SageGeometryError("line_init expects a 'name'.")
+                engine.register_line(name, engine.symbolic_line(name))
+            elif op == "point_on_line":
+                line_name = step.get("line")
+                point = step.get("point")
+                if not isinstance(line_name, str) or not isinstance(point, str):
+                    raise SageGeometryError("point_on_line expects 'line' and 'point'.")
+                engine.add_point_on_line(engine.lines[line_name], point)
+            elif op in {"perpendicular_lines", "line_perpendicular"}:
+                args = step.get("args", [])
+                if len(args) != 2:
+                    raise SageGeometryError("perpendicular_lines expects args [line1_name, line2_name].")
+                line1_name, line2_name = args
+                engine.add_perpendicular_lines(engine.lines[line1_name], engine.lines[line2_name])
+            elif op in {"line_intersection", "intersection_lines"}:
+                args = step.get("args", [])
+                if len(args) != 3:
+                    raise SageGeometryError("line_intersection expects args [line1_name, line2_name, point_label].")
+                line1_name, line2_name, point_label = args
+                engine.line_intersection(engine.lines[line1_name], engine.lines[line2_name], point_label)
             elif op == "add_circumcenter":
                 engine.add_circumcenter(*step["args"])
             elif op == "add_midpoint":
@@ -181,6 +216,16 @@ def run_steps(engine: Any, steps: Sequence[Dict[str, Any]]) -> None:
                 if isinstance(avoid, str):
                     avoid = [avoid]
                 engine.line_circle_intersection(*args, avoid=avoid)
+            elif op == "circle_intersection":
+                args = step.get("args", [])
+                if len(args) != 5:
+                    raise SageGeometryError(
+                        "circle_intersection expects args [center1, radius_point1, center2, radius_point2, name]."
+                    )
+                avoid = step.get("avoid")
+                if isinstance(avoid, str):
+                    avoid = [avoid]
+                engine.circle_intersection(*args, avoid=avoid)
             elif op in {"lemoine_point", "lemoine", "symmedian"}:
                 engine.lemoine_point(*step["args"])
             elif op in {"add_isogonal_conjugate"}:

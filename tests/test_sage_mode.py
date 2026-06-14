@@ -166,7 +166,31 @@ def test_sage_cli_qq_supports_p4_json() -> None:
     assert "D = 1" in result.stdout
 
 
-@pytest.mark.parametrize("op", ["circle_intersection"])
+@pytest.mark.parametrize("script_name", ["P3_23_10_25.json", "incenter_arc_demo.json"])
+def test_sage_cli_qq_supports_v2_scripts(script_name: str) -> None:
+    result = subprocess.run(
+        [
+            "sage",
+            "-python",
+            "-m",
+            "geometry_sage_cli",
+            "run",
+            "--field",
+            "QQ",
+            str(PROJECT_ROOT / "scripts" / script_name),
+        ],
+        cwd=PROJECT_ROOT,
+        env=_sage_env(),
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=60,
+    )
+    assert "N = 0" in result.stdout
+    assert "D = 1" in result.stdout
+
+
+@pytest.mark.parametrize("op", ["line_circle_object_intersection"])
 def test_sage_cli_branch_ops_fail_clearly(tmp_path: Path, op: str) -> None:
     script = tmp_path / "sage_unsupported.json"
     script.write_text(

@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "id": "IMO-2010-P4",
+    "source": "https://www.imo-official.org/assets/documents/problems/2010/2010_eng.pdf",
+    "status": "attempt",
+    "notes": [
+      "Encodes the cevian intersections with the circumcircle and the tangent at C.",
+      "The metric condition SC = SP and the interior/order conditions are not directly encodable with the current JSON operation set."
+    ]
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "add_point", "name": "P"},
+    {"op": "line_circle_intersection", "args": ["A", "P", "O", "A", "K"], "avoid": ["A"]},
+    {"op": "line_circle_intersection", "args": ["B", "P", "O", "A", "L"], "avoid": ["B"]},
+    {"op": "line_circle_intersection", "args": ["C", "P", "O", "A", "M"], "avoid": ["C"]},
+    {"op": "add_point", "name": "S"},
+    {"op": "add_collinear", "args": ["A", "B", "S"]},
+    {"op": "add_perpendicular", "args": ["S", "C", "O", "C"]},
+    {"op": "add_perpendicular_bisector"},
+    {"op": "constraint_check", "constraint": "squared_distance_equal", "args": ["M", "K", "M", "L"]},
+    {"op": "print_points", "names": ["A", "B", "C", "P", "K", "L", "M", "S"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

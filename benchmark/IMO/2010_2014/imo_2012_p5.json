@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "id": "IMO-2012-P5",
+    "source": "https://www.imo-official.org/assets/documents/problems/2012/2012_eng.pdf",
+    "status": "attempt",
+    "notes": [
+      "Uses main_unit_triangle to construct the A-excenter J.",
+      "Tangency points are represented as perpendicular projections to the relevant sidelines; line-side direction data is omitted."
+    ]
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "main_triangle_excenter", "which": "A", "name": "J"},
+    {"op": "project_point_to_line", "args": ["J", "B", "C", "M"]},
+    {"op": "project_point_to_line", "args": ["J", "A", "B", "K"]},
+    {"op": "project_point_to_line", "args": ["J", "A", "C", "L"]},
+    {"op": "intersection", "args": ["L", "M", "B", "J", "F"]},
+    {"op": "intersection", "args": ["K", "M", "C", "J", "G"]},
+    {"op": "intersection", "args": ["A", "F", "B", "C", "S"]},
+    {"op": "intersection", "args": ["A", "G", "B", "C", "T"]},
+    {"op": "midpoint", "args": ["S", "T", "M_check"]},
+    {"op": "constraint_check", "constraint": "collinear", "args": ["M", "M_check", "B"]},
+    {"op": "constraint_check", "constraint": "squared_distance_equal", "args": ["M", "S", "M", "T"]},
+    {"op": "print_points", "names": ["A", "B", "C", "J", "K", "L", "M", "F", "G", "S", "T", "M_check"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

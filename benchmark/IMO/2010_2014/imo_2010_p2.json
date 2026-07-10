@@ -1,0 +1,29 @@
+{
+  "metadata": {
+    "id": "IMO-2010-P2",
+    "source": "https://www.imo-official.org/assets/documents/problems/2010/2010_eng.pdf",
+    "status": "attempt",
+    "notes": [
+      "Uses main_unit_triangle to construct the incenter I.",
+      "The arc condition for E and the strict angle inequality are omitted; the equality of angles is encoded as an isogonal reflection."
+    ]
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "main_triangle_incenter", "name": "I"},
+    {"op": "line_circle_intersection", "args": ["A", "I", "O", "A", "D"], "avoid": ["A"]},
+    {"op": "add_point", "name": "E", "unit_circle": true},
+    {"op": "add_point", "name": "F"},
+    {"op": "add_collinear", "args": ["B", "C", "F"]},
+    {"op": "isogonal_reflection", "args": ["A", "B", "C", "F", "E"]},
+    {"op": "midpoint", "args": ["I", "F", "G"]},
+    {"op": "intersection", "args": ["D", "G", "E", "I", "X"]},
+    {"op": "constraint_check", "constraint": "concyclic", "args": ["A", "B", "C", "X"]},
+    {"op": "print_points", "names": ["A", "B", "C", "I", "D", "E", "F", "G", "X"]},
+    {"op": "learned_rules"},
+    {"op": "print_constraints"}
+  ]
+}

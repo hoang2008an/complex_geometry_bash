@@ -21,3 +21,4 @@ dist/
 # IDE metadata
 .idea/
 .vscode/
+uv.lock

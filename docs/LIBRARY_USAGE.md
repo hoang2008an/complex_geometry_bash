@@ -1,3 +1,8 @@
+> **⚠️ Unofficial Guide**
+>
+> This guide was mostly AI-generated from an older commit and is **not** official documentation. It may contain outdated or inaccurate information. Please use it only as an informal reference.
+
+
 # Complex Geometry Bash — Library Usage Guide
 
 This comprehensive guide explains how to use the Complex Geometry Bash library as a Python API. It covers all public methods and provides practical examples for common geometric constructions.
@@ -74,9 +79,20 @@ Geometric relations are encoded as **polynomial equations** in the point symbols
 - **Concyclicity**: Complex polynomial eliminating the circumcenter
 - **Unit Circle**: `z_X * zb_X - 1 = 0`
 
-### Auto-Learning Mechanism
+## Conjugate Substitution
 
-The engine automatically discovers **conjugate substitutions** when constraints determine a conjugate symbol uniquely in terms of non-conjugate symbols. For example, if a constraint implies `zb_A = 1/z_A`, this substitution is recorded and applied to all future expressions.
+The engine automatically discovers **conjugate substitutions** when the given constraints uniquely determine a conjugate symbol in terms of non-conjugate symbols. For example, if a constraint implies
+
+```text
+zb_A = 1 / z_A
+```
+
+the engine records this substitution and automatically applies it to all subsequent expressions.
+
+> **Note**
+>
+> This behavior was recently reworked. Point coordinates are **no longer computed automatically**. To evaluate a point, you must explicitly invoke the `calculate_point` operation.
+>See the examples under **`benchmark/IMO/2010-2014`** to know how to use the operations.
 
 ### Workflow
 

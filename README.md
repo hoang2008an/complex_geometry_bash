@@ -36,17 +36,16 @@ For detailed API documentation and usage examples, see:
 git clone <repository-url>
 cd complex_geometry_bash
 
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
 # Install dependencies
 pip install -r requirements.txt
 ```
 
 ### Using the Library
-
-The engine requires `src/lib` on your `PYTHONPATH`. Two options:
+Please check out benchmark/IMO for example usage
+```bash
+python src/lib/geometry_cli.py run path/to/scripts.json
+```
+<!-- The engine requires `src/lib` on your `PYTHONPATH`. Two options:
 
 **Option 1: Direct import (recommended for development)**
 ```bash
@@ -57,7 +56,7 @@ export PYTHONPATH=src/lib:src
 ```bash
 # The bin/geometry script sets PYTHONPATH automatically
 ./bin/geometry demo
-```
+```  -->
 
 ### Runtime Dependencies
 
@@ -148,18 +147,15 @@ The command-line interface provides a JSON-based workflow system for reproducibl
 ### Getting Started
 
 ```bash
-# Run the built-in demonstration
-./bin/geometry demo
-
-# Execute a custom JSON script
-./bin/geometry run scripts/your_scenario.json
-
-# Inspect polynomials directly
-./bin/geometry poly concyclic A B C D
-./bin/geometry poly circumcenter A B C U
-./bin/geometry poly angle A B C "pi/2"
+# Solve IMO 2011 Problem 6
+python src/lib/geometry_cli.py run benchmark/IMO/2010_2014/imo_2011_p6.json
 ```
+The solver may take a few minutes to finish. It will produce a large amount of output, but you only need to verify that the final result contains:
 
+N = 0
+D = 1
+
+If these values are reported, the run completed successfully.
 ### JSON Script Format
 
 Scripts are JSON files with a `steps` array. Each step is an object with an `op` field and parameters:

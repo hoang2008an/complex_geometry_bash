@@ -181,6 +181,24 @@ def test_add_isogonal_reflection_adds_constraint() -> None:
     assert sp.simplify(stored - expected) == 0
 
 
+def test_calculate_point_resolves_collinear_isogonal_point() -> None:
+    engine = GeometryEngine()
+    for label in ("A", "B", "C", "E", "F"):
+        engine.add_point(label)
+    for label in ("A", "B", "C", "E"):
+        engine.add_unit_circle(label)
+
+    engine.add_collinear("B", "C", "F")
+    engine.add_isogonal_reflection("A", "B", "C", "F", "E")
+    z_f, zb_f = engine.calculate_point("F")
+
+    assert engine._has_assignment("F")
+    assert engine.z_symbol("F") not in z_f.free_symbols
+    assert engine.zb_symbol("F") not in z_f.free_symbols
+    assert engine.z_symbol("F") not in zb_f.free_symbols
+    assert engine.zb_symbol("F") not in zb_f.free_symbols
+
+
 def test_isogonal_reflection_invalid_vertices() -> None:
     engine = GeometryEngine()
     assignments = {

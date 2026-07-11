@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "id": "IMO-2013-P4",
+    "source": "https://www.imo-official.org/assets/documents/problems/2013/2013_eng.pdf",
+    "status": "almost automatically solvable",
+    "notes":[
+        "the concyclic constraint <=> \\frac{\\left(x - y\\right) \\left(x - z\\right) \\left(x^{2} + y^{2}\\right) \\left(x^{2} + z^{2}\\right) \\left(y - z\\right) \\left(y^{2} + z^{2}\\right) \\left(x^{2} y + x^{2} z + x y^{2} + 4 x y z + x z^{2} + y^{2} z + y z^{2}\\right)}{x^{3} y^{3} z^{3} \\left(x + y\\right) \\left(x + z\\right) \\left(y + z\\right)} = 0",
+        "which <=> (a+b)(b+c)(c+a)=0 because sigma xy(x+y) +4xyz=xyz(|x+y+z|^2+1)!=0"
+    ]
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "main_triangle_excenter", "which": "A", "name": "A_prime"},
+    {"op": "main_triangle_excenter", "which": "B", "name": "B_prime"},
+    {"op": "main_triangle_excenter", "which": "C", "name": "C_prime"},
+    {"op": "project_point_to_line", "args": ["A_prime", "B", "C", "A_1"]},
+    {"op": "project_point_to_line", "args": ["B_prime", "A", "C", "B_1"]},
+    {"op": "project_point_to_line", "args": ["C_prime", "A", "B", "C_1"]},
+    {"op": "circumcenter", "args": ["A_1", "B_1", "C_1","O_1"]},
+    {"op":"add_concyclic","args":["A","B","C","O_1"]},
+    {"op": "print_points"},
+    {"op": "print_constraints","subs":true}
+  ]
+}

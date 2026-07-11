@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "id": "IMO-2011-P6",
+    "source": "https://www.imo-official.org/assets/documents/problems/2011/2011_eng.pdf",
+    "status": "Success"
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "add_point", "name": "D", "unit_circle": true},
+    {"op":"add_point","name":"A_1"},
+    {"op":"add_collinear","args":["B","C","A_1"]},
+    {"op":"add_perpendicular","args":["O","D","D","A_1"]},
+    {"op":"calculate_point","name":"A_1"},
+    {"op":"reflect_point_over_line","args":["D","B","C","A_2"]},
+    {"op":"add_point","name":"B_1"},
+    {"op":"add_collinear","args":["A","C","B_1"]},
+    {"op":"add_perpendicular","args":["O","D","D","B_1"]},
+    {"op":"calculate_point","name":"B_1"},
+    {"op":"reflect_point_over_line","args":["D","A","C","B_2"]},
+    {"op":"add_point","name":"C_1"},
+    {"op":"add_collinear","args":["B","A","C_1"]},
+    {"op":"add_perpendicular","args":["O","D","D","C_1"]},
+    {"op":"calculate_point","name":"C_1"},
+    {"op":"reflect_point_over_line","args":["D","B","A","C_2"]},
+    {"op": "intersection", "args": ["A_1", "A_2", "B_1", "B_2", "C_3"]},
+    {"op": "intersection", "args": ["A_1", "A_2", "C_1", "C_2", "B_3"]},
+    {"op": "intersection", "args": ["B_1", "B_2", "C_1", "C_2", "A_3"]},
+    {"op": "constraint_check", "constraint": "tangent_circles", "args": ["A", "B", "C", "A_3","B_3","C_3"]},
+    {"op": "print_points"},
+    {"op": "print_constraints"}
+  ]
+}

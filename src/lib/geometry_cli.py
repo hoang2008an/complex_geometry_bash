@@ -61,7 +61,6 @@ def _print_constraint_results(results: Sequence[Tuple[str, str]]) -> None:
 def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
     for index, step in enumerate(steps, start=1):
         op = step.get("op")
-        print(op)
         if not op:
             raise GeometryError(f"Step {index} missing 'op' field.")
 
@@ -110,13 +109,20 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                         "add_projection_to_line expects args [P, A, B, H]."
                     )
                 engine.add_projection_to_line(*args)
-            elif op in {"equal_angle"}:
+            elif op in {"add_equal_angle"}:
                 args = step.get("args", [])
                 if len(args) != 6:
                     raise GeometryError(
                         "add_equal_angle expects args [A, B, C, D, E, F]."
                     )
                 engine.add_equal_angle(*args)
+            elif op in {"add_equal_length"}:
+                args = step.get("args", [])
+                if len(args) != 4:
+                    raise GeometryError(
+                        "add_equal_length expects args [A, B, C, D, E, F]."
+                    )
+                engine.add_equal_length(*args)
             elif op in {
                 "add_isogonal_reflection",
                 "isogonal_reflection",
@@ -205,6 +211,11 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
                 engine.orthocenter_via_altitudes(*step["args"])
             elif op == "intersection":
                 engine.intersection_of_lines(*step["args"])
+            elif op == "calculate_point":
+                name = step.get("name")
+                if not isinstance(name, str) or not name:
+                    raise GeometryError("calculate_point expects a point 'name'.")
+                engine.calculate_point(name)
             elif op in {"project_point_to_line", "point_projection"}:
                 args = step.get("args", [])
                 if len(args) != 4:
@@ -627,7 +638,11 @@ def run_steps(engine: GeometryEngine, steps: Sequence[Dict[str, Any]]) -> None:
             elif op == "learned_rules":
                 _print_learned_rules(engine.display_learned_rules(style=DISPLAY_STYLE))
             elif op == "print_constraints":
-                _print_constraints(engine.constraint_strings(style=DISPLAY_STYLE))
+                # subs = True if step["subs"] else False
+                subs = step.get("subs", False)
+                _print_constraints(
+                    engine.constraint_strings(style=DISPLAY_STYLE, subs=subs)
+                )
             else:
                 raise GeometryError(f"Unsupported op '{op}' on step {index}.")
         except KeyError as exc:

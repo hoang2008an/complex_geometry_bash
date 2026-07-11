@@ -1,0 +1,25 @@
+{
+  "metadata": {
+    "id": "IMO-2012-P1",
+    "source": "https://www.imo-official.org/assets/documents/problems/2012/2012_eng.pdf",
+    "status": "Success"
+  },
+  "steps": [
+    {"op": "add_point", "name": "A", "unit_circle": true},
+    {"op": "add_point", "name": "B", "unit_circle": true},
+    {"op": "add_point", "name": "C", "unit_circle": true},
+    {"op": "set_unit_triangle", "args": ["A", "B", "C", "x", "y", "z"]},
+    {"op": "main_triangle_excenter", "which": "A", "name": "J"},
+    {"op": "project_point_to_line", "args": ["J", "B", "C", "M"]},
+    {"op": "project_point_to_line", "args": ["J", "A", "B", "K"]},
+    {"op": "project_point_to_line", "args": ["J", "A", "C", "L"]},
+    {"op": "intersection", "args": ["L", "M", "B", "J", "F"]},
+    {"op": "intersection", "args": ["K", "M", "C", "J", "G"]},
+    {"op": "intersection", "args": ["A", "F", "B", "C", "S"]},
+    {"op": "intersection", "args": ["A", "G", "B", "C", "T"]},
+    {"op": "constraint_check", "constraint": "collinear", "args": ["S", "M", "T"]},
+    {"op": "constraint_check", "constraint": "equal_length", "args": ["M", "S", "M", "T"]},
+    {"op": "print_points"},
+    {"op": "print_constraints"}
+  ]
+}

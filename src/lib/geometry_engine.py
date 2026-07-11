@@ -80,8 +80,8 @@ class GeometryEngine:
 
     * Value substitutions (e.g. origin at 0)
     * Assignments produced by constructions (rational expressions)
-    * Unit-circle substitutions (zb_U -> 1/z_U)
-    * Auto-learned conjugate collapses from single-conjugate constraints
+    * Explicit model substitutions (for example zb_U -> 1/z_U on the unit circle)
+    * Assignments produced by explicit point calculations
     """
 
     def __init__(self) -> None:
@@ -89,6 +89,8 @@ class GeometryEngine:
         self.constraints: List[sp.Expr] = []
         self.value_subs: Dict[sp.Symbol, sp.Expr] = {}
         self.point_assignments: Dict[sp.Symbol, sp.Expr] = {}
+        self.model_subs: Dict[sp.Symbol, sp.Expr] = {}
+        # Kept for CLI/test compatibility. Constraints no longer populate this map.
         self.learned_subs: Dict[sp.Symbol, sp.Expr] = {}
         self.unit_circle_points: Set[str] = set()
         self.lines: Dict[str, Line] = {}
@@ -153,6 +155,7 @@ class GeometryEngine:
             return
         record = self.points[name]
         constraint = record.z * record.zb - 1
+        self.model_subs[record.zb] = sp.simplify(1 / record.z)
         self.add_constraint(constraint)
         self.unit_circle_points.add(name)
 
@@ -184,12 +187,12 @@ class GeometryEngine:
         subs: Dict[sp.Symbol, sp.Expr] = {}
         subs.update(self.value_subs)
         subs.update(self.point_assignments)
-        subs.update(self.learned_subs)
+        subs.update(self.model_subs)
         return subs
 
     def _apply_all(self, expr: sp.Expr) -> sp.Expr:
         """
-        Apply all known substitutions (value, assignments, unit-circle, learned).
+        Apply all known substitutions (value, assignments, and model rules).
 
         Multiple passes are used to ensure transitive substitutions settle.
         """
@@ -210,54 +213,15 @@ class GeometryEngine:
         return sp.simplify(current)
 
     # ------------------------------------------------------------------
-    # Constraint handling and auto-learning
+    # Constraint handling
     # ------------------------------------------------------------------
     def add_constraint(self, constraint: sp.Expr) -> None:
         """
-        Record a polynomial constraint (assumed == 0) and attempt auto-learning.
+        Record a polynomial constraint (assumed == 0).
         """
 
         raw_constraint = sp.expand(constraint)
         self.constraints.append(raw_constraint)
-        processed = self._apply_all(raw_constraint)
-        self._auto_learn_from_constraint(processed)
-
-    def _auto_learn_from_constraint(self, constraint: sp.Expr) -> None:
-        """
-        Implement the single-equation conjugate collapse:
-
-        1. Apply substitutions (already handled before getting here).
-        2. Convert to a numerator-only polynomial (clear denominators).
-        3. If the numerator contains exactly one conjugate symbol zb_X,
-           solve for it and record the substitution if conjugate-free.
-        """
-        print(constraint)
-        if constraint == 0:
-            return
-
-        together_expr = sp.together(constraint)
-        numerator, _ = sp.fraction(together_expr)
-        numerator = sp.expand(numerator)
-
-        zb_symbols = [
-            symbol
-            for symbol in numerator.free_symbols
-            if isinstance(symbol, sp.Symbol) and str(symbol).startswith("zb_")
-        ]
-        if len(zb_symbols) != 1:
-            return
-
-        target = zb_symbols[0]
-        solution = sp.solve(sp.Eq(numerator, 0), target, dict=True)
-        if not solution:
-            return
-
-        rhs = sp.simplify(solution[0][target])
-        if any(str(sym).startswith("zb_") for sym in rhs.free_symbols):
-            return
-
-        # Record the learned substitution and shrink existing constraints.
-        self.learned_subs[target] = rhs
 
     # ------------------------------------------------------------------
     # Predicate polynomials
@@ -655,7 +619,7 @@ class GeometryEngine:
         F: str,
         *,
         apply_subs: bool = False,
-    ):
+    ) -> sp.Expr:
         """
         Polynomial enforcing that ABC=DEF( directed angle ).
 
@@ -667,6 +631,25 @@ class GeometryEngine:
         which simplifies to the cross-multiplication below.
         """
         expr = self.angle(A, B, C) - self.angle(D, E, F)
+        return self._apply_all(expr) if apply_subs else expr
+
+    def equal_length_poly(
+        self,
+        A: str,
+        B: str,
+        C: str,
+        D: str,
+        *,
+        apply_subs: bool = False,
+    ) -> sp.Expr:
+        """
+        Polynomial enforcing that AB=CD.
+
+        The condition is expressed through complex directions:
+            |z_A-z_B|**2=|z_C-z_D|**2
+
+        """
+        expr = self.squared_distance(A, B) - self.squared_distance(C, D)
         return self._apply_all(expr) if apply_subs else expr
 
     def isogonal_reflection_poly(
@@ -747,6 +730,28 @@ class GeometryEngine:
             return eq_A, eq_B, eq_C
 
         return sp.expand(eq_A), sp.expand(eq_B), sp.expand(eq_C)
+
+    def tangent_circles_poly(self, A: str, B: str, C: str, D: str, E: str, F: str):
+        c1_name = self._unique_internal_name("Circ_1")
+        c2_name = self._unique_internal_name("Circ_2")
+
+        c1 = self.circle_from_three_points(c1_name, A, B, C)
+        c2 = self.circle_from_three_points(c2_name, D, E, F)
+
+        r1_sq = c1.radius_squared
+        r2_sq = c2.radius_squared
+        d_sq = self.squared_distance(c1.center, c2.center)
+
+        r1_sq = self._apply_all(r1_sq)
+        r2_sq = self._apply_all(r2_sq)
+        d_sq = self._apply_all(d_sq)
+        # print(r1_sq)
+        # print(r2_sq)
+        # print(d_sq)
+        #  (d^2 - R1^2 - R2^2)^2 - 4*R1^2*R2^2 = 0
+        tangency_poly = (d_sq - r1_sq - r2_sq) ** 2 - 4 * r1_sq * r2_sq
+
+        return sp.simplify(tangency_poly)
 
     # ------------------------------------------------------------------
     # Line helpers
@@ -1042,6 +1047,10 @@ class GeometryEngine:
         for eq in self.projection_to_line_polys(P, A, B, H):
             self.add_constraint(eq)
 
+    def add_equal_length(self, A: str, B: str, C: str, D: str):
+        """Store the constraints that AB=CD."""
+        self.add_constraint(self.equal_length_poly(A, B, C, D))
+
     def add_equal_angle(self, A: str, B: str, C: str, D: str, E: str, F: str):
         """Store the constraints that 2 directed angle ABC and DEF are equal."""
         self.add_constraint(self.equal_angle_poly(A, B, C, D, E, F))
@@ -1104,23 +1113,45 @@ class GeometryEngine:
 
     def circumcenter(self, A: str, B: str, C: str, U: str) -> sp.Expr:
         """
-        Construct the circumcenter U of triangle ABC by solving the circumcenter equations.
+        Construct the circumcenter U of triangle ABC using the explicit complex coordinate formula.
         """
         self.add_point(U)
         zU, zbU = self.z_symbol(U), self.zb_symbol(U)
         if zU in self.point_assignments and zbU in self.point_assignments:
             return self.z(U)
-        eq1, eq2 = self.circumcenter_polys(A, B, C, U, raw=True)
-        eq1 = self._apply_all(eq1)
-        eq2 = self._apply_all(eq2)
-        solutions = sp.solve([eq1, eq2], (zU, zbU), dict=True)
-        if not solutions:
+
+        a, b, c = self.z(A), self.z(B), self.z(C)
+        a_bar, b_bar, c_bar = self.zb(A), self.zb(B), self.zb(C)
+
+        a = self._apply_all(a)
+        b = self._apply_all(b)
+        c = self._apply_all(c)
+        a_bar = self._apply_all(a_bar)
+        b_bar = self._apply_all(b_bar)
+        c_bar = self._apply_all(c_bar)
+
+        num_z = a * a_bar * (b - c) + b * b_bar * (c - a) + c * c_bar * (a - b)
+        den_z = a_bar * (b - c) + b_bar * (c - a) + c_bar * (a - b)
+
+        num_zb = (
+            a * a_bar * (b_bar - c_bar)
+            + b * b_bar * (c_bar - a_bar)
+            + c * c_bar * (a_bar - b_bar)
+        )
+        den_zb = a * (b_bar - c_bar) + b * (c_bar - a_bar) + c * (a_bar - b_bar)
+
+        den_z = sp.cancel(den_z)
+        if den_z == 0:
             raise GeometryError(
-                "Circumcenter construction failed: system is underdetermined."
+                "Circumcenter construction failed: Points A, B, C are collinear (system is underdetermined)."
             )
 
-        solution = solutions[0]
-        self._set_point_assignment(U, solution[zU], solution[zbU])
+        den_zb = sp.cancel(den_zb)
+
+        z_val = sp.cancel(num_z / den_z)
+        zb_val = sp.cancel(num_zb / den_zb)
+
+        self._set_point_assignment(U, z_val, zb_val)
         return self.z(U)
 
     def midpoint(self, P: str, Q: str, M: str) -> sp.Expr:
@@ -1286,6 +1317,7 @@ class GeometryEngine:
             self._set_point_assignment(
                 vertex, sp.simplify(z_root**2), sp.simplify(zb_root**2)
             )
+            self.model_subs[self.zb_symbol(vertex)] = 1 / sp.simplify((z_root**2))
             roots[canonical] = root_label
 
         self._main_unit_triangle = UnitTriangleConfig(points=points_map, roots=roots)
@@ -1342,8 +1374,8 @@ class GeometryEngine:
         zb_rootC = self.zb_symbol(rootC)
 
         patterns = {
-            "A": (sp.Integer(1), sp.Integer(1), sp.Integer(-1)),
-            "B": (sp.Integer(1), sp.Integer(-1), sp.Integer(1)),
+            "A": (sp.Integer(1), sp.Integer(-1), sp.Integer(1)),
+            "B": (sp.Integer(1), sp.Integer(1), sp.Integer(-1)),
             "C": (sp.Integer(-1), sp.Integer(1), sp.Integer(1)),
         }
         coeff_ab, coeff_bc, coeff_ca = patterns[normalized]
@@ -1443,6 +1475,101 @@ class GeometryEngine:
         solution = solutions[0]
         self._set_point_assignment(X, solution[zX], solution[zbX])
         return self.z(X), self.zb(X)
+
+    def calculate_point(self, name: str) -> Tuple[sp.Expr, sp.Expr]:
+        """
+        Explicitly derive the coordinates of ``name`` from stored constraints.
+
+        The calculation keeps the ordinary coordinate as the primary variable:
+        it first derives ``zb_name`` as an expression in ``z_name`` and known
+        data, then substitutes that relation to determine ``z_name`` when the
+        remaining constraints are sufficient.  A line constraint therefore
+        records a useful partial assignment, while two independent constraints
+        can fully resolve the point.
+        """
+        self.ensure_point(name)
+        z_var = self.z_symbol(name)
+        zb_var = self.zb_symbol(name)
+        relevant_raw = [
+            constraint
+            for constraint in self.constraints
+            if constraint.has(z_var, zb_var)
+        ]
+        if not relevant_raw:
+            raise GeometryError(
+                f"Cannot calculate point '{name}': no stored constraint references it."
+            )
+
+        equations = [
+            sp.expand(self._apply_all(constraint)) for constraint in relevant_raw
+        ]
+        equations = [equation for equation in equations if equation != 0]
+        if not equations:
+            return self.z(name), self.zb(name)
+
+        zb_candidates: List[sp.Expr] = []
+        for equation in equations:
+            try:
+                solutions = sp.solve(equation, zb_var, dict=True)
+            except (NotImplementedError, ValueError):
+                continue
+            for solution in solutions:
+                if zb_var not in solution:
+                    continue
+                candidate = sp.simplify(self._apply_all(solution[zb_var]))
+                if zb_var not in candidate.free_symbols:
+                    zb_candidates.append(candidate)
+
+        if not zb_candidates:
+            raise GeometryError(
+                f"Cannot calculate point '{name}': unable to derive its conjugate coordinate."
+            )
+
+        zb_expr = min(zb_candidates, key=sp.count_ops)
+        self._set_coordinate_assignment(zb_var, zb_expr)
+        reduced_equations = [
+            sp.expand(self._apply_all(constraint)) for constraint in relevant_raw
+        ]
+        reduced_equations = [
+            equation
+            for equation in reduced_equations
+            if equation != 0 and z_var in equation.free_symbols
+        ]
+        if not reduced_equations:
+            return self.z(name), self.zb(name)
+        try:
+            z_solutions = sp.solve(reduced_equations, z_var, dict=True)
+        except (NotImplementedError, ValueError) as exc:
+            raise GeometryError(
+                f"Cannot calculate point '{name}': failed to solve its ordinary coordinate."
+            ) from exc
+
+        resolved_z = []
+        for solution in z_solutions:
+            if z_var not in solution:
+                continue
+            candidate = sp.simplify(self._apply_all(solution[z_var]))
+            if (
+                z_var not in candidate.free_symbols
+                and zb_var not in candidate.free_symbols
+            ):
+                if not any(
+                    sp.simplify(candidate - existing) == 0 for existing in resolved_z
+                ):
+                    resolved_z.append(candidate)
+
+        if not resolved_z:
+            raise GeometryError(
+                f"Cannot calculate point '{name}': constraints do not determine its ordinary coordinate."
+            )
+        if len(resolved_z) != 1:
+            raise GeometryError(
+                f"Cannot calculate point '{name}': constraints produce multiple solutions."
+            )
+
+        self._set_coordinate_assignment(z_var, resolved_z[0])
+        self._set_coordinate_assignment(zb_var, self._apply_all(zb_expr))
+        return self.z(name), self.zb(name)
 
     def project_point_to_line(
         self, P: str, A: str, B: str, H: str
@@ -1817,6 +1944,12 @@ class GeometryEngine:
         zb_symbol = self.zb_symbol(name)
         self.point_assignments[z_symbol] = z_candidate
         self.point_assignments[zb_symbol] = zb_candidate
+
+    def _set_coordinate_assignment(
+        self, symbol: sp.Symbol, expression: sp.Expr
+    ) -> None:
+        """Record one coordinate assignment, including an intentional partial one."""
+        self.point_assignments[symbol] = sp.simplify(sp.together(expression))
 
     def _fermat_point_components(
         self, A: str, B: str, C: str, w: sp.Expr
@@ -2243,7 +2376,7 @@ class GeometryEngine:
                 )
             if angle is None:
                 raise GeometryError("Angle constraint requires an 'angle' expression.")
-            return [self.angle_value_poly(*args, angle, raw=False)]
+            return [self.angle_value_poly(args[0], args[1], args[2], angle, raw=False)]
         if normalized in {"angle_bisector_either", "angle_bisector_any"}:
             if len(args) != 4:
                 raise GeometryError(
@@ -2347,6 +2480,24 @@ class GeometryEngine:
                 )
             return list(self.triangle_congruence_polys(*args, directed=False))
 
+        if normalized == "equal_angle":
+            if len(args) != 6:
+                raise GeometryError(
+                    "Equal angle expects six point labels (A, B, C, D, E, F)."
+                )
+            return [self.equal_angle_poly(*args)]
+        if normalized == "equal_length":
+            if len(args) != 4:
+                raise GeometryError(
+                    "Equal length expects four point labels (A, B, C, D)."
+                )
+            return [self.equal_length_poly(*args)]
+        if normalized == "tangent_circles":
+            if len(args) != 6:
+                raise GeometryError(
+                    "Tangent circles expects four point labels (A, B, C, D,E,F)."
+                )
+            return [self.tangent_circles_poly(*args)]
         raise GeometryError(f"Unsupported constraint '{constraint}'.")
 
     def constraint_conjugate_free(
@@ -2427,14 +2578,29 @@ class GeometryEngine:
         summary: Dict[str, str] = {}
         for name in names:
             summary[name] = self.format_expr(self.z(name), style=style)
+            summary[f"\overline{{{name}}}"] = self.format_expr(
+                self.zb(name), style=style
+            )
         return summary
 
-    def constraint_strings(self, *, style: str = "text") -> List[str]:
+    def constraint_strings(
+        self, *, style: str = "text", subs: bool = False
+    ) -> List[str]:
         """Return stored constraints in their recorded polynomial form."""
         return [
-            self.format_expr(sp.expand(constraint), style=style)
+            self.format_expr(
+                sp.factor(
+                    sp.expand(
+                        constraint.subs(self._substitution_map(), simultaneous=False)
+                        if subs
+                        else constraint
+                    )
+                ),
+                style=style,
+            )
             for constraint in self.constraints
         ]
+        return []
 
 
 __all__ = [

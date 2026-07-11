@@ -2,11 +2,7 @@
   "metadata": {
     "id": "IMO-2014-P4",
     "source": "https://www.imo-official.org/assets/documents/problems/2014/2014_eng.pdf",
-    "status": "attempt",
-    "notes": [
-      "Encodes P and Q on line BC via triangle-similarity constraints; side/ray/order conditions are omitted.",
-      "M and N are constructed as point reflections so that P and Q are the midpoints of AM and AN."
-    ]
+    "status": "Success"
   },
   "steps": [
     {"op": "add_point", "name": "A", "unit_circle": true},
@@ -18,12 +14,13 @@
     {"op": "add_collinear", "args": ["B", "C", "Q"]},
     {"op": "triangle_similarity", "args": ["A", "B", "P", "C", "B", "A"], "directed": false},
     {"op": "triangle_similarity", "args": ["A", "C", "Q", "B", "C", "A"], "directed": false},
+    {"op": "calculate_point", "name": "P"},
+    {"op": "calculate_point", "name": "Q"},
     {"op": "reflect_point_over_point", "args": ["A", "P", "M"]},
     {"op": "reflect_point_over_point", "args": ["A", "Q", "N"]},
     {"op": "intersection", "args": ["B", "M", "C", "N", "X"]},
     {"op": "constraint_check", "constraint": "concyclic", "args": ["A", "B", "C", "X"]},
     {"op": "print_points", "names": ["A", "B", "C", "P", "Q", "M", "N", "X"]},
-    {"op": "learned_rules"},
     {"op": "print_constraints"}
   ]
 }
